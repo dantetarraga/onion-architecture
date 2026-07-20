@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-asphalt: #17181a;
+  --color-asphalt-800: #202226;
+  --color-asphalt-700: #2b2e33;
+  --color-concrete: #f1eee8;
+  --color-concrete-200: #e6e2d8;
+  --color-paper: #fbfaf6;
+  --color-signal-yellow: #f5b700;
+  --color-signal-yellow-600: #c79300;
+  --color-route-green: #2f9e58;
+  --color-route-green-600: #1f7a40;
+  --color-route-green-100: #e1f2e7;
+  --color-hazard-red: #c4272d;
+  --color-hazard-red-600: #a31f24;
+  --color-hazard-red-100: #f6dfe0;
+  --color-steel: #6b7078;
+  --color-steel-300: #a8acb2;
+  --color-steel-100: #d8d5cb;
+
+  --font-display: 'Oswald', 'Arial Narrow', sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-steel-100);
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-concrete);
+    color: var(--color-asphalt);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    font-weight: 600;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-signal-yellow);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Signature element: perforated parking-ticket stub with punched notches on the side edges. */
+  .ticket-stub {
+    position: relative;
+    background: var(--color-paper);
+    border-radius: 2px;
+    background-image:
+      radial-gradient(circle at 0 50%, transparent 9px, var(--color-paper) 9.5px),
+      radial-gradient(circle at 100% 50%, transparent 9px, var(--color-paper) 9.5px);
+  }
+
+  .ticket-stub::before,
+  .ticket-stub::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 18px;
+    background-image: radial-gradient(circle, var(--color-concrete) 6px, transparent 6.5px);
+    background-size: 18px 18px;
+    background-repeat: repeat-y;
+    background-position: center;
+  }
+
+  .ticket-stub::before {
+    left: -9px;
+  }
+
+  .ticket-stub::after {
+    right: -9px;
+  }
+
+  .ticket-divider {
+    border-top: 2px dashed var(--color-steel-100);
+  }
+}

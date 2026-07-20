@@ -1,0 +1,6 @@
+export enum SlotType {
+  REGULAR = 'REGULAR',
+  MOTO = 'MOTO',
+  ELECTRICO = 'ELECTRICO',
+  DISCAPACITADOS = 'DISCAPACITADOS',
+}

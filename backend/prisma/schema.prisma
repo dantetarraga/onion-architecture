@@ -1,0 +1,147 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum SlotType {
+  REGULAR
+  MOTO
+  ELECTRICO
+  DISCAPACITADOS
+}
+
+enum SlotStatus {
+  DISPONIBLE
+  RESERVADA
+  OCUPADA
+  NO_DISPONIBLE
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+  COMPLETED
+}
+
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String           @id @default(uuid())
+  email        String           @unique
+  passwordHash String
+  fullName     String
+  role         Role             @default(USER)
+  reservations Reservation[]
+  sessions     ParkingSession[]
+  payments     Payment[]
+  createdAt    DateTime         @default(now())
+
+  @@map("users")
+}
+
+model Branch {
+  id           String        @id @default(uuid())
+  name         String
+  address      String
+  lat          Float
+  lng          Float
+  pricePerHour Decimal       @db.Decimal(10, 2)
+  slots        ParkingSlot[]
+  reservations Reservation[]
+  createdAt    DateTime      @default(now())
+
+  @@map("branches")
+}
+
+model ParkingSlot {
+  id           String           @id @default(uuid())
+  branchId     String
+  branch       Branch           @relation(fields: [branchId], references: [id])
+  code         String
+  type         SlotType
+  status       SlotStatus       @default(DISPONIBLE)
+  reservations Reservation[]
+  sessions     ParkingSession[]
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([branchId, code])
+  @@index([branchId, type, status])
+  @@map("parking_slots")
+}
+
+model Reservation {
+  id            String            @id @default(uuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id])
+  branchId      String
+  branch        Branch            @relation(fields: [branchId], references: [id])
+  slotId        String
+  slot          ParkingSlot       @relation(fields: [slotId], references: [id])
+  requestedType SlotType
+  status        ReservationStatus @default(PENDING)
+  createdAt     DateTime          @default(now())
+  expiresAt     DateTime
+  confirmedAt   DateTime?
+  session       ParkingSession?
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("reservations")
+}
+
+model ParkingSession {
+  id            String        @id @default(uuid())
+  reservationId String        @unique
+  reservation   Reservation   @relation(fields: [reservationId], references: [id])
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  slotId        String
+  slot          ParkingSlot   @relation(fields: [slotId], references: [id])
+  status        SessionStatus @default(ACTIVE)
+  entryAt       DateTime      @default(now())
+  exitAt        DateTime?
+  payment       Payment?
+
+  @@index([userId, status])
+  @@map("parking_sessions")
+}
+
+model Payment {
+  id                String         @id @default(uuid())
+  sessionId         String         @unique
+  session           ParkingSession @relation(fields: [sessionId], references: [id])
+  userId            String
+  user              User           @relation(fields: [userId], references: [id])
+  amount            Decimal        @db.Decimal(10, 2)
+  status            PaymentStatus  @default(PENDING)
+  externalReference String?
+  paidAt            DateTime?
+  createdAt         DateTime       @default(now())
+
+  @@map("payments")
+}

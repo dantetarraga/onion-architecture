@@ -1,0 +1,7 @@
+/** crypto.randomUUID() only exists in secure contexts (https or localhost); this works everywhere. */
+export function generateId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}

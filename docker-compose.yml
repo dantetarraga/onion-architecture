@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-parking}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parking}
+      POSTGRES_DB: ${POSTGRES_DB:-smart_parking}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-parking} -d ${POSTGRES_DB:-smart_parking}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret-key-min-32-chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    ports:
+      - "3000:3000"
+    command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/main.js"
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+      VITE_WS_URL: ${VITE_WS_URL:-http://localhost:3000}
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres-data:
