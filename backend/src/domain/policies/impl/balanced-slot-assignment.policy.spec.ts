@@ -1,10 +1,13 @@
 import { Branch, BranchProps } from '../../entities/branch.entity';
-import { ParkingSlot, ParkingSlotProps } from '../../entities/parking-slot.entity';
+import {
+  ParkingSlot,
+  ParkingSlotProps,
+} from '../../entities/parking-slot.entity';
 import { SlotStatus } from '../../enums/slot-status.enum';
 import { SlotType } from '../../enums/slot-type.enum';
 import { BranchRepositoryPort } from '../../ports/branch.repository.port';
 import { ParkingSlotRepositoryPort } from '../../ports/parking-slot.repository.port';
-import { DefaultSlotAssignmentPolicy } from './default-slot-assignment.policy';
+import { BalancedSlotAssignmentPolicy } from './balanced-slot-assignment.policy';
 
 function buildBranch(overrides: Partial<BranchProps> = {}): Branch {
   return new Branch({
@@ -31,7 +34,7 @@ function buildSlot(overrides: Partial<ParkingSlotProps> = {}): ParkingSlot {
   });
 }
 
-describe('DefaultSlotAssignmentPolicy', () => {
+describe('BalancedSlotAssignmentPolicy', () => {
   const slotsRepo: jest.Mocked<ParkingSlotRepositoryPort> = {
     findById: jest.fn(),
     countByBranchAndType: jest.fn(),
@@ -49,48 +52,76 @@ describe('DefaultSlotAssignmentPolicy', () => {
     findAllExcept: jest.fn(),
   };
 
-  let policy: DefaultSlotAssignmentPolicy;
+  let policy: BalancedSlotAssignmentPolicy;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    policy = new DefaultSlotAssignmentPolicy(slotsRepo, branchesRepo);
+    policy = new BalancedSlotAssignmentPolicy(slotsRepo, branchesRepo);
   });
 
-  it('asigna la cochera reclamada cuando hay cupo en la sucursal solicitada', async () => {
+  it('asigna la cochera menos usada recientemente cuando hay cupo en la sucursal solicitada', async () => {
     const slot = buildSlot();
-    slotsRepo.claimAvailableSlot.mockResolvedValue(slot);
+    slotsRepo.claimLeastRecentlyUsedSlot.mockResolvedValue(slot);
 
-    const result = await policy.assign({ branchId: 'branch-1', slotType: SlotType.REGULAR });
+    const result = await policy.assign({
+      branchId: 'branch-1',
+      slotType: SlotType.REGULAR,
+    });
 
     expect(result).toEqual({ outcome: 'ASSIGNED', slot });
+    expect(slotsRepo.claimLeastRecentlyUsedSlot).toHaveBeenCalledWith(
+      'branch-1',
+      SlotType.REGULAR,
+    );
     expect(branchesRepo.findAllExcept).not.toHaveBeenCalled();
   });
 
-  it('sugiere la sucursal cercana con cupo cuando no hay disponibilidad en la solicitada', async () => {
-    slotsRepo.claimAvailableSlot.mockResolvedValue(null);
+  it('prefiere una sucursal mas lejana pero menos ocupada por sobre la mas cercana y casi llena', async () => {
+    slotsRepo.claimLeastRecentlyUsedSlot.mockResolvedValue(null);
     const currentBranch = buildBranch({ id: 'branch-1', lat: 0, lng: 0 });
-    const nearBranch = buildBranch({ id: 'branch-2', lat: 0, lng: 0.01 });
-    const farBranch = buildBranch({ id: 'branch-3', lat: 0, lng: 1 });
+    const nearButFullBranch = buildBranch({
+      id: 'branch-2',
+      lat: 0,
+      lng: 0.01,
+    });
+    const farButEmptyBranch = buildBranch({
+      id: 'branch-3',
+      lat: 0,
+      lng: 0.05,
+    });
     branchesRepo.findById.mockResolvedValue(currentBranch);
-    branchesRepo.findAllExcept.mockResolvedValue([farBranch, nearBranch]);
-    slotsRepo.hasAvailability.mockImplementation(async (branchId) => branchId === 'branch-2');
+    branchesRepo.findAllExcept.mockResolvedValue([
+      nearButFullBranch,
+      farButEmptyBranch,
+    ]);
+    slotsRepo.hasAvailability.mockResolvedValue(true);
+    slotsRepo.getOccupancySummary.mockResolvedValue([
+      { branchId: 'branch-2', totalSlots: 10, occupiedOrReserved: 10 },
+      { branchId: 'branch-3', totalSlots: 10, occupiedOrReserved: 0 },
+    ]);
 
-    const result = await policy.assign({ branchId: 'branch-1', slotType: SlotType.REGULAR });
+    const result = await policy.assign({
+      branchId: 'branch-1',
+      slotType: SlotType.REGULAR,
+    });
 
     expect(result.outcome).toBe('SUGGEST_OTHER_BRANCH');
     if (result.outcome === 'SUGGEST_OTHER_BRANCH') {
-      expect(result.suggestedBranch.id).toBe('branch-2');
+      expect(result.suggestedBranch.id).toBe('branch-3');
     }
   });
 
   it('informa que no hay disponibilidad si ninguna sucursal cercana tiene cupo', async () => {
-    slotsRepo.claimAvailableSlot.mockResolvedValue(null);
+    slotsRepo.claimLeastRecentlyUsedSlot.mockResolvedValue(null);
     branchesRepo.findById.mockResolvedValue(buildBranch());
-    branchesRepo.findAllExcept.mockResolvedValue([buildBranch({ id: 'branch-2' })]);
+    branchesRepo.findAllExcept.mockResolvedValue([
+      buildBranch({ id: 'branch-2' }),
+    ]);
     slotsRepo.hasAvailability.mockResolvedValue(false);
 
     const result = await policy.assign({ branchId: 'branch-1' });
 
     expect(result).toEqual({ outcome: 'NO_AVAILABILITY' });
+    expect(slotsRepo.getOccupancySummary).not.toHaveBeenCalled();
   });
 });
