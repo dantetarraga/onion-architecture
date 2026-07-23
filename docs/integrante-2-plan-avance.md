@@ -5,7 +5,7 @@
 - **Proyecto:** Sistema Inteligente de Gestión de Estacionamientos
 - **Documento base:** `documento-implementacion-v2.docx` (raíz de `practica2`)
 - **Responsable de este plan:** Integrante 2
-- **Última actualización:** 2026-07-20
+- **Última actualización:** 2026-07-22
 - **Repo:** `onion-architecture/` — `backend/` (NestJS + TS + Prisma + PostgreSQL) y `frontend/` (React)
 
 ---
@@ -131,11 +131,13 @@ if (existing && existing.isActive()) {
 
 **Criterio de aceptación:** escanear el mismo QR de entrada dos veces devuelve `409 SESSION_ALREADY_ACTIVE` la segunda vez, no crea una sesión duplicada.
 
-- [ ] Error de dominio agregado
-- [ ] Regla implementada en `DefaultParkingPolicy`
-- [ ] Filtro HTTP actualizado
-- [ ] Spec nuevo cubriendo entrada duplicada
-- [ ] Probado manualmente vía Swagger (escanear QR 2 veces)
+- [x] Error de dominio agregado (`domain/errors/session-already-active.error.ts`)
+- [x] Regla implementada en `DefaultParkingPolicy.registerEntry` (guard con `findByReservationId` antes de crear la sesión)
+- [x] Filtro HTTP actualizado (`SESSION_ALREADY_ACTIVE` → 409)
+- [x] Spec nuevo cubriendo entrada duplicada (`default-parking.policy.spec.ts`, 9 tests: `registerEntry` + `registerExit`, que antes no tenía cobertura)
+- [x] Probado manualmente vía REST contra Postgres real (`docker compose -f docker-compose.dev.yml up -d` → migrate → seed → `start:dev`): login, crear reserva, obtener QR de entrada, `POST /parking/entry` dos veces con el mismo QR → primer escaneo `201` (sesión `ACTIVE`), segundo escaneo `409 SESSION_ALREADY_ACTIVE`; verificado en la tabla `parking_sessions` que solo existe una fila para la reserva
+
+**E2 — cerrado.**
 
 ---
 
@@ -162,11 +164,17 @@ if (existing && existing.isActive()) {
 
 **Criterio de aceptación (demo):** pagar, esperar/forzar que pase el tiempo suficiente para que la tarifa suba (o bajar `pricePerHour`/manipular el reloj de prueba), intentar salir → `402 OVERSTAY_PAYMENT_INSUFFICIENT` con el monto pendiente. Registrar un pago adicional por la diferencia → la salida procede.
 
-- [ ] Error de dominio agregado
-- [ ] `RegisterExitUseCase` recalcula y valida
-- [ ] Filtro HTTP actualizado
-- [ ] Test del use case
-- [ ] Paso de demo documentado en el runbook
+**Gap adicional encontrado al implementar (no estaba en el plan original):** el criterio de aceptación de "pagar la diferencia" no funcionaba con el `RegisterPaymentUseCase` tal como estaba — `payments.sessionId` es `@unique` en el schema (relación 1:1 sesión↔pago) y el use case hacía `return existingPayment` apenas encontraba un pago, sin intentar cobrar nada más. Se resolvió agregando `PaymentRepositoryPort.increaseAmount(id, additionalAmount, externalReference, paidAt)` (incrementa el monto del pago existente, lo marca `APPROVED` y concatena la nueva `externalReference` a la anterior para trazabilidad) y reescribiendo `RegisterPaymentUseCase` para recalcular la tarifa siempre y, si ya hay un pago pero es insuficiente, cobrar y sumar solo la diferencia (top-up) en vez de devolver el pago viejo tal cual.
+
+- [x] Error de dominio agregado (`domain/errors/overstay-payment-insufficient.error.ts`, incluye `missingAmount`)
+- [x] `RegisterExitUseCase` recalcula con `PricingPolicy` al momento real de salida y valida contra el pago existente
+- [x] Filtro HTTP actualizado (`OVERSTAY_PAYMENT_INSUFFICIENT` → 402)
+- [x] Test del use case (`register-exit.use-case.spec.ts`, 5 tests) + del top-up (`register-payment.use-case.spec.ts`, 5 tests, nuevo — no existía spec para este use case)
+- [x] `PaymentRepositoryPort.increaseAmount` + implementación Prisma, para soportar el pago de la diferencia sin romper el `@unique` de `sessionId`
+- [x] Paso de demo documentado en el runbook (`docs/demo-runbook.md`)
+- [x] Probado manualmente contra Postgres real: reserva → ingreso → pago corto (S/6) → `entryAt` retrasado 3h (simula sobre-estadía) → intento de salida → `402` con "Falta pagar S/ 18.00" → pago de la diferencia (mismo `payment.id`, monto acumulado a S/24, `externalReference` concatenada) → reintento de salida → `201`, sesión `COMPLETED`
+
+**E3 — cerrado.**
 
 ---
 
@@ -180,8 +188,10 @@ if (existing && existing.isActive()) {
 - Nuevo: caso de test en `application/use-cases/reservations/create-reservation.use-case.spec.ts` (si no existe, crearlo) que simule: sucursal A llena → sugiere B → B también llena → sugiere C.
 - Modificado: `docs/demo-runbook.md` → agregar este paso a la sección 3 (casos para el jurado).
 
-- [ ] Test de cascada agregado
-- [ ] Paso agregado al runbook
+- [x] Test de cascada agregado (`create-reservation.use-case.spec.ts`, nuevo — no existía spec para este use case; 3 tests: cascada A→B→C, asignación directa en la sucursal sugerida, `NO_AVAILABILITY`)
+- [x] Paso agregado al runbook
+
+**E4 — cerrado.** Solo test nuevo, sin cambios de código de producción (el comportamiento ya funcionaba por reuso de `CreateReservationUseCase`, tal como se había detectado leyendo el código).
 
 ---
 
@@ -212,12 +222,15 @@ if (existing && existing.isActive()) {
 
 **Criterio de aceptación:** el frontend permite elegir método de pago; la respuesta del backend refleja el método elegido (`externalReference` con el prefijo correcto); cambiar de método no requiere tocar `RegisterPaymentUseCase` más allá del campo `method` ya agregado (agregar un 5º método en el futuro es solo un adapter nuevo + una línea en el router).
 
-- [ ] Enum y puerto actualizados
-- [ ] 4 adapters + router creados
-- [ ] Wiring en `policies.module.ts`
-- [ ] Use case + DTO + controller actualizados
-- [ ] Frontend: selector de método de pago (coordinar con quien lleve esa pantalla)
-- [ ] Test del router (Strategy) cubriendo los 4 métodos + rechazo por monto ≤ 0
+- [x] Enum (`domain/enums/payment-method-type.enum.ts`) y puerto actualizados (`ChargeInput.method`)
+- [x] 4 adapters + router creados (`infrastructure/payments/{cash,card,yape,plin}-payment.adapter.ts` + `payment-method-router.adapter.ts`); se eliminó `mock-payment-method.adapter.ts` (reemplazado por completo, sin usos ni tests que dependieran de él)
+- [x] Wiring en `core-infra.module.ts` (no en `policies.module.ts` como decía el plan original — `PAYMENT_METHOD` ya se registraba ahí, no en `PoliciesModule`; se corrigió al implementar)
+- [x] Use case + DTO + controller actualizados (`RegisterPaymentUseCase`, `register-payment.dto.ts` con `@IsEnum`, `payments.controller.ts`)
+- [x] Frontend: selector de método de pago en `ActiveSessionCard.tsx` (reutiliza el componente `Select` ya existente, mismo patrón que `ReservationModal.tsx`); build (`tsc -b && vite build`) y `oxlint` limpios. No se pudo verificar visualmente en navegador esta sesión (sin herramientas de navegador disponibles) — pendiente de una pasada visual antes de la sustentación.
+- [x] Test del router (Strategy) cubriendo los 4 métodos + rechazo por monto ≤ 0 (`payment-method-router.adapter.spec.ts`, 8 tests)
+- [x] Probado manualmente contra Postgres real: pago con `YAPE` → `externalReference` con prefijo `YAPE-`; DTO rechaza `method` inválido o ausente con `400`
+
+**E5 — cerrado** (backend completo y validado contra Postgres real; frontend implementado y con build/lint verdes, falta solo la revisión visual en navegador).
 
 ---
 
@@ -242,13 +255,14 @@ No modificar sin avisar al equipo: `ReservationPolicy`, `login/JWT/roles`, sched
 ## 7. Checklist general de avance
 
 - [x] E1 — Política de asignación alternativa (implementada, testeada unitariamente y verificada contra Postgres real)
-- [ ] E2 — Anti-replay de QR de entrada
-- [ ] E3 — Sobre-estadía / pago insuficiente
-- [ ] E4 — Test de revalidación en cascada
-- [ ] E5 — Métodos de pago múltiples
-- [ ] Runbook de demo actualizado con los pasos nuevos
-- [ ] `npm run test` verde con todo lo nuevo
-- [ ] Ensayo completo de demo (checklist del `demo-runbook.md` + casos nuevos)
+- [x] E2 — Anti-replay de QR de entrada (implementada, testeada unitariamente y verificada contra Postgres real)
+- [x] E3 — Sobre-estadía / pago insuficiente (implementada, incluyendo top-up de pago, testeada unitariamente y verificada contra Postgres real)
+- [x] E4 — Test de revalidación en cascada (comportamiento ya existía por reuso de código; agregado el test que lo documenta)
+- [x] E5 — Métodos de pago múltiples (backend validado contra Postgres real; frontend con build/lint verdes, falta revisión visual)
+- [x] Runbook de demo actualizado con los pasos nuevos
+- [x] `npm run test` verde con todo lo nuevo (43 tests, backend)
+- [ ] Ensayo completo de demo (checklist del `demo-runbook.md` + casos nuevos) — pendiente, hacerlo antes de la sustentación
+- [ ] Revisión visual en navegador del selector de método de pago (E5, frontend)
 
 ---
 
