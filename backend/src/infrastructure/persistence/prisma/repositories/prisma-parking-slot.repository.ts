@@ -76,6 +76,30 @@ export class PrismaParkingSlotRepository implements ParkingSlotRepositoryPort {
     return record ? ParkingSlotMapper.toDomain(record) : null;
   }
 
+  /**
+   * Igual que claimAvailableSlot pero ordenando por "updatedAt" ASC en vez de "code" ASC,
+   * para repartir el desgaste fisico entre cocheras (usado por BalancedSlotAssignmentPolicy).
+   */
+  async claimLeastRecentlyUsedSlot(branchId: string, type?: SlotType): Promise<ParkingSlot | null> {
+    const typeFilter = type ? Prisma.sql`AND "type" = ${type}::"SlotType"` : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<PrismaParkingSlot[]>(Prisma.sql`
+      UPDATE "parking_slots"
+      SET "status" = 'RESERVADA', "updatedAt" = now()
+      WHERE "id" = (
+        SELECT "id" FROM "parking_slots"
+        WHERE "branchId" = ${branchId} AND "status" = 'DISPONIBLE' ${typeFilter}
+        ORDER BY "updatedAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      )
+      RETURNING *;
+    `);
+
+    const record = rows[0];
+    return record ? ParkingSlotMapper.toDomain(record) : null;
+  }
+
   async updateStatus(slotId: string, status: SlotStatus): Promise<void> {
     await this.prisma.parkingSlot.update({ where: { id: slotId }, data: { status } });
   }

@@ -1,9 +1,11 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { BalancedSlotAssignmentPolicy } from '../../domain/policies/impl/balanced-slot-assignment.policy';
 import { DefaultParkingPolicy } from '../../domain/policies/impl/default-parking.policy';
 import { DefaultReservationPolicy } from '../../domain/policies/impl/default-reservation.policy';
 import { DefaultSlotAssignmentPolicy } from '../../domain/policies/impl/default-slot-assignment.policy';
 import { HourlyPricingPolicy } from '../../domain/policies/impl/hourly-pricing.policy';
+import type { SlotAssignmentPolicy } from '../../domain/policies/slot-assignment.policy';
 import type { BranchRepositoryPort } from '../../domain/ports/branch.repository.port';
 import type { ParkingSessionRepositoryPort } from '../../domain/ports/parking-session.repository.port';
 import type { ParkingSlotRepositoryPort } from '../../domain/ports/parking-slot.repository.port';
@@ -28,9 +30,17 @@ const DEFAULT_TOLERANCE_MINUTES = 20;
   providers: [
     {
       provide: SLOT_ASSIGNMENT_POLICY,
-      useFactory: (slots: ParkingSlotRepositoryPort, branches: BranchRepositoryPort) =>
-        new DefaultSlotAssignmentPolicy(slots, branches),
-      inject: [PARKING_SLOT_REPOSITORY, BRANCH_REPOSITORY],
+      useFactory: (
+        slots: ParkingSlotRepositoryPort,
+        branches: BranchRepositoryPort,
+        config: ConfigService,
+      ): SlotAssignmentPolicy => {
+        const strategy = config.get<string>('SLOT_ASSIGNMENT_STRATEGY') ?? 'default';
+        return strategy === 'balanced'
+          ? new BalancedSlotAssignmentPolicy(slots, branches)
+          : new DefaultSlotAssignmentPolicy(slots, branches);
+      },
+      inject: [PARKING_SLOT_REPOSITORY, BRANCH_REPOSITORY, ConfigService],
     },
     {
       provide: PRICING_POLICY,

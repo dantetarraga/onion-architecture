@@ -20,6 +20,12 @@ export interface ParkingSlotRepositoryPort {
   hasAvailability(branchId: string, type?: SlotType): Promise<boolean>;
   /** Reclama atomicamente la primera cochera DISPONIBLE del tipo pedido (o cualquier tipo) y la pasa a RESERVADA. */
   claimAvailableSlot(branchId: string, type?: SlotType): Promise<ParkingSlot | null>;
+  /**
+   * Reclama atomicamente la cochera DISPONIBLE menos usada recientemente (ORDER BY updatedAt ASC)
+   * del tipo pedido y la pasa a RESERVADA. Usada por BalancedSlotAssignmentPolicy para repartir
+   * el desgaste fisico entre cocheras en vez de siempre elegir la misma.
+   */
+  claimLeastRecentlyUsedSlot(branchId: string, type?: SlotType): Promise<ParkingSlot | null>;
   updateStatus(slotId: string, status: SlotStatus): Promise<void>;
   getOccupancySummary(branchIds: string[]): Promise<BranchOccupancySummary[]>;
   /** Fuerza todas las cocheras de una sucursal a OCUPADA, usado por el endpoint admin de demo. */

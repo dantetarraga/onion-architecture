@@ -12,6 +12,8 @@ export type PaymentStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export type OccupancyLevel = 'GREEN' | 'YELLOW' | 'RED';
 
+export type PaymentMethodType = 'CASH' | 'CARD' | 'YAPE' | 'PLIN';
+
 export const SLOT_TYPE_LABEL: Record<SlotType, string> = {
   REGULAR: 'Regular',
   MOTO: 'Moto',
@@ -31,4 +33,11 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   PENDING: 'Pendiente',
   APPROVED: 'Aprobado',
   REJECTED: 'Rechazado',
+};
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethodType, string> = {
+  CASH: 'Efectivo',
+  CARD: 'Tarjeta',
+  YAPE: 'Yape',
+  PLIN: 'Plin',
 };

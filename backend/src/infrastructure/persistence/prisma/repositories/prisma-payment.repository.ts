@@ -33,6 +33,27 @@ export class PrismaPaymentRepository implements PaymentRepositoryPort {
     return PaymentMapper.toDomain(record);
   }
 
+  async increaseAmount(
+    id: string,
+    additionalAmount: number,
+    externalReference: string,
+    paidAt: Date,
+  ): Promise<Payment> {
+    const existing = await this.prisma.payment.findUniqueOrThrow({ where: { id } });
+    const record = await this.prisma.payment.update({
+      where: { id },
+      data: {
+        amount: existing.amount.toNumber() + additionalAmount,
+        status: PaymentStatus.APPROVED,
+        externalReference: existing.externalReference
+          ? `${existing.externalReference},${externalReference}`
+          : externalReference,
+        paidAt,
+      },
+    });
+    return PaymentMapper.toDomain(record);
+  }
+
   async listByUser(userId: string): Promise<Payment[]> {
     const records = await this.prisma.payment.findMany({
       where: { userId },

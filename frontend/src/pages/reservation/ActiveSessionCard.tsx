@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { Spinner } from '@/components/ui/Spinner';
 import { formatCurrency, formatElapsed } from '@/lib/format';
 import { useTicker } from '@/hooks/useTicker';
@@ -8,6 +9,9 @@ import { parkingApi } from '@/api/parking.api';
 import { paymentsApi } from '@/api/payments.api';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import type { Branch, ParkingSession, PricingResult, Reservation } from '@/types/entities';
+import { PAYMENT_METHOD_LABEL, type PaymentMethodType } from '@/types/enums';
+
+const PAYMENT_METHODS: PaymentMethodType[] = ['CASH', 'CARD', 'YAPE', 'PLIN'];
 
 interface ActiveSessionCardProps {
   session: ParkingSession;
@@ -20,6 +24,7 @@ export function ActiveSessionCard({ session, reservation, branch, onChange }: Ac
   const [amount, setAmount] = useState<PricingResult | null>(null);
   const [loadingAmount, setLoadingAmount] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [method, setMethod] = useState<PaymentMethodType>('CASH');
   const now = useTicker();
 
   function loadAmount() {
@@ -38,7 +43,7 @@ export function ActiveSessionCard({ session, reservation, branch, onChange }: Ac
   async function handlePay() {
     setPaying(true);
     try {
-      await paymentsApi.create(session.id);
+      await paymentsApi.create(session.id, method);
       notifySuccess('Pago aprobado. Ya puedes registrar tu salida.');
       onChange();
     } catch (error) {
@@ -75,7 +80,20 @@ export function ActiveSessionCard({ session, reservation, branch, onChange }: Ac
             </ul>
           </>
         )}
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4">
+          <Select
+            label="Método de pago"
+            value={method}
+            onChange={(e) => setMethod(e.target.value as PaymentMethodType)}
+          >
+            {PAYMENT_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {PAYMENT_METHOD_LABEL[m]}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="mt-3 flex gap-2">
           <Button variant="ghost" size="sm" onClick={loadAmount}>
             Actualizar
           </Button>

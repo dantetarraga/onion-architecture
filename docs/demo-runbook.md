@@ -11,6 +11,19 @@ cd backend
 npx prisma migrate reset --force
 ```
 
+**Para desarrollo local del backend solo** (sin buildear imágenes de backend/frontend), usar en su lugar
+`backend/docker-compose.dev.yml`, que levanta únicamente Postgres en el puerto `5434` (igual que `DATABASE_URL`
+en `.env.example`):
+
+```bash
+cd backend
+cp ../.env.example .env   # o crear .env con los mismos valores
+docker compose -f docker-compose.dev.yml up -d
+npx prisma migrate deploy
+npm run seed
+npm run start:dev
+```
+
 (El reset pedirá confirmación por consentimiento humano si se ejecuta con un agente de IA — es normal, correrlo manualmente no la pide.)
 
 Usuarios sembrados:
@@ -45,6 +58,11 @@ cd ../frontend && npm run dev       # http://localhost:5173
 
 - **Política 3 (una reserva activa):** intentar crear una segunda reserva con el mismo usuario mientras la primera sigue pendiente → `409 RESERVATION_ALREADY_ACTIVE`.
 - **Política 1 completa (sugerencia entre sucursales):** iniciar sesión como admin, usar `POST /admin/branches/:id/simulate-full` sobre una sucursal, luego crear una reserva en esa sucursal como usuario → la respuesta debe traer `SUGGEST_OTHER_BRANCH` con la sucursal más cercana (fórmula de Haversine) y su distancia en km.
+- **Política 1, estrategia intercambiable (E1 — Onion en vivo):** con el backend apagado, cambiar `SLOT_ASSIGNMENT_STRATEGY=balanced` en `.env` y reiniciar (`npm run start:dev`). Sin tocar ningún otro archivo, la asignación dentro de una sucursal ahora reclama la cochera menos usada recientemente en vez de la primera por código (verificable comparando el `slotId` devuelto en dos reservas sucesivas), y la sugerencia cross-sucursal deja de ordenar solo por distancia y pasa a penalizar sucursales con mayor ocupación (útil como argumento en vivo de la sección 13 del documento base: mismo caso de uso, mismo controller, misma persistencia — solo cambia una variable de entorno).
+- **Política 5, anti-replay de QR (E2):** con una sesión ya activa (post "Simular escaneo de ingreso"), volver a llamar "Simular escaneo de ingreso" con el mismo QR de entrada (o reenviar el mismo `POST /parking/entry`) → `409 SESSION_ALREADY_ACTIVE`, sin crear una segunda sesión para la misma reserva. Verificable también consultando que solo existe una fila `ACTIVE` en `parking_sessions` para esa `reservationId`.
+- **Política 4, sobre-estadía / pago insuficiente (E3):** con una sesión activa ya pagada por una estadía corta, forzar que pase tiempo suficiente (o retrasar `entryAt` en la base para el ensayo) y luego intentar "Simular escaneo de salida" → `402 OVERSTAY_PAYMENT_INSUFFICIENT` con el monto exacto que falta; la cochera NO se libera. Pagar de nuevo desde la app ("Pagar (mock)") registra solo la diferencia (top-up sobre el mismo pago, no uno nuevo — `payments.sessionId` es único) y el siguiente intento de salida procede normalmente.
+- **Revalidación en cascada al confirmar sucursal sugerida (E4):** `POST /reservations/confirm-suggestion` reusa `CreateReservationUseCase` completo, así que si la sucursal sugerida (B) también se llenó mientras el usuario decidía, automáticamente vuelve a sugerir la siguiente más cercana con cupo (C), en vez de fallar. Cubierto por test explícito (`create-reservation.use-case.spec.ts`) que documenta A→B→C.
+- **Métodos de pago múltiples, Strategy (E5):** en "Mi reserva" con sesión activa, el desplegable "Método de pago" permite elegir Efectivo/Tarjeta/Yape/Plin antes de pulsar "Pagar (mock)"; la respuesta trae `externalReference` con el prefijo correspondiente (`CASH-`, `CARD-`, `YAPE-`, `PLIN-`), demostrando que `PaymentMethodRouterAdapter` despacha al mini-adapter correcto sin que `RegisterPaymentUseCase` conozca los proveedores concretos.
 - **Política 2 y 7 (expiración automática):** `POST /admin/reservations/expire-now` fuerza el mismo caso de uso que corre el `@Cron` cada minuto, sin esperar los 20 minutos reales. Para verlo con el cron real, bajar `RESERVATION_TOLERANCE_MINUTES=1` en `.env` antes de levantar el backend.
 - **Dashboard admin:** pestaña "Administración" (solo visible con `admin@parking.com`) muestra ocupación por sucursal y reporte de ingresos, y permite simular sucursal llena.
 
