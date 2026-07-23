@@ -2,6 +2,7 @@ import { ParkingSession } from '../../entities/parking-session.entity';
 import { ReservationStatus } from '../../enums/reservation-status.enum';
 import { SlotStatus } from '../../enums/slot-status.enum';
 import { ReservationExpiredError } from '../../errors/reservation-expired.error';
+import { SessionAlreadyActiveError } from '../../errors/session-already-active.error';
 import { NotFoundError } from '../../errors/not-found.error';
 import { ParkingSessionRepositoryPort } from '../../ports/parking-session.repository.port';
 import { ParkingSlotRepositoryPort } from '../../ports/parking-slot.repository.port';
@@ -29,6 +30,11 @@ export class DefaultParkingPolicy implements ParkingPolicy {
       reservation.status === ReservationStatus.COMPLETED
     ) {
       throw new ReservationExpiredError();
+    }
+
+    const existing = await this.sessions.findByReservationId(reservation.id);
+    if (existing && existing.isActive()) {
+      throw new SessionAlreadyActiveError();
     }
 
     if (reservation.status === ReservationStatus.PENDING) {
