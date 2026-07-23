@@ -19,7 +19,7 @@ export class PaymentsController {
 
   @Post()
   create(@CurrentUser() user: AuthTokenPayload, @Body() dto: RegisterPaymentDto) {
-    return this.registerPayment.execute({ sessionId: dto.sessionId, userId: user.sub });
+    return this.registerPayment.execute({ sessionId: dto.sessionId, userId: user.sub, method: dto.method });
   }
 
   @Get(':id')

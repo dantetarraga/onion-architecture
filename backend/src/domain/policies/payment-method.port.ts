@@ -1,7 +1,10 @@
+import { PaymentMethodType } from '../enums/payment-method-type.enum';
+
 export interface ChargeInput {
   sessionId: string;
   amount: number;
   currency: 'PEN';
+  method: PaymentMethodType;
 }
 
 export interface ChargeResult {
