@@ -1,11 +1,16 @@
-import { Reservation, ReservationProps } from '../../entities/reservation.entity';
+import {
+  Reservation,
+  ReservationProps,
+} from '../../entities/reservation.entity';
 import { ReservationStatus } from '../../enums/reservation-status.enum';
 import { SlotType } from '../../enums/slot-type.enum';
 import { ParkingSessionRepositoryPort } from '../../ports/parking-session.repository.port';
 import { ReservationRepositoryPort } from '../../ports/reservation.repository.port';
 import { DefaultReservationPolicy } from './default-reservation.policy';
 
-function buildReservation(overrides: Partial<ReservationProps> = {}): Reservation {
+function buildReservation(
+  overrides: Partial<ReservationProps> = {},
+): Reservation {
   return new Reservation({
     id: 'res-1',
     userId: 'user-1',
@@ -49,28 +54,39 @@ describe('DefaultReservationPolicy', () => {
 
   it('calcula la ventana de tolerancia de 20 minutos', () => {
     const createdAt = new Date('2026-01-01T21:00:00Z');
-    expect(policy.calculateExpiresAt(createdAt).toISOString()).toBe('2026-01-01T21:20:00.000Z');
+    expect(policy.calculateExpiresAt(createdAt).toISOString()).toBe(
+      '2026-01-01T21:20:00.000Z',
+    );
   });
 
   it('marca como expirada una reserva PENDING pasada la ventana de tolerancia', () => {
     const reservation = buildReservation();
-    expect(policy.isExpired(reservation, new Date('2026-01-01T09:20:01Z'))).toBe(true);
+    expect(
+      policy.isExpired(reservation, new Date('2026-01-01T09:20:01Z')),
+    ).toBe(true);
   });
 
   it('no marca como expirada una reserva dentro de la ventana de tolerancia', () => {
     const reservation = buildReservation();
-    expect(policy.isExpired(reservation, new Date('2026-01-01T09:19:59Z'))).toBe(false);
+    expect(
+      policy.isExpired(reservation, new Date('2026-01-01T09:19:59Z')),
+    ).toBe(false);
   });
 
   it('rechaza crear una reserva si el usuario ya tiene una reserva activa', async () => {
     reservationsRepo.findActiveByUser.mockResolvedValue(buildReservation());
     const result = await policy.canCreateReservation('user-1');
-    expect(result).toEqual({ allowed: false, reason: 'ACTIVE_RESERVATION_EXISTS' });
+    expect(result).toEqual({
+      allowed: false,
+      reason: 'ACTIVE_RESERVATION_EXISTS',
+    });
   });
 
   it('rechaza crear una reserva si el usuario ya tiene una sesion activa', async () => {
     reservationsRepo.findActiveByUser.mockResolvedValue(null);
-    sessionsRepo.findActiveByUser.mockResolvedValue({ id: 'session-1' } as never);
+    sessionsRepo.findActiveByUser.mockResolvedValue({
+      id: 'session-1',
+    } as never);
     const result = await policy.canCreateReservation('user-1');
     expect(result).toEqual({ allowed: false, reason: 'ACTIVE_SESSION_EXISTS' });
   });
