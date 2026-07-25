@@ -1,6 +1,12 @@
-import { ParkingSession, ParkingSessionProps } from '../../entities/parking-session.entity';
+import {
+  ParkingSession,
+  ParkingSessionProps,
+} from '../../entities/parking-session.entity';
 import { Payment, PaymentProps } from '../../entities/payment.entity';
-import { Reservation, ReservationProps } from '../../entities/reservation.entity';
+import {
+  Reservation,
+  ReservationProps,
+} from '../../entities/reservation.entity';
 import { PaymentStatus } from '../../enums/payment-status.enum';
 import { ReservationStatus } from '../../enums/reservation-status.enum';
 import { SessionStatus } from '../../enums/session-status.enum';
@@ -14,7 +20,9 @@ import { PaymentRepositoryPort } from '../../ports/payment.repository.port';
 import { ReservationRepositoryPort } from '../../ports/reservation.repository.port';
 import { DefaultParkingPolicy } from './default-parking.policy';
 
-function buildReservation(overrides: Partial<ReservationProps> = {}): Reservation {
+function buildReservation(
+  overrides: Partial<ReservationProps> = {},
+): Reservation {
   return new Reservation({
     id: 'reservation-1',
     userId: 'user-1',
@@ -30,7 +38,9 @@ function buildReservation(overrides: Partial<ReservationProps> = {}): Reservatio
   });
 }
 
-function buildSession(overrides: Partial<ParkingSessionProps> = {}): ParkingSession {
+function buildSession(
+  overrides: Partial<ParkingSessionProps> = {},
+): ParkingSession {
   return new ParkingSession({
     id: 'session-1',
     reservationId: 'reservation-1',
@@ -98,42 +108,65 @@ describe('DefaultParkingPolicy', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    policy = new DefaultParkingPolicy(reservationsRepo, sessionsRepo, slotsRepo, paymentsRepo);
+    policy = new DefaultParkingPolicy(
+      reservationsRepo,
+      sessionsRepo,
+      slotsRepo,
+      paymentsRepo,
+    );
   });
 
   describe('registerEntry', () => {
     it('lanza NotFoundError si la reserva no existe', async () => {
       reservationsRepo.findById.mockResolvedValue(null);
 
-      await expect(policy.registerEntry({ reservationId: 'reservation-1', now: new Date() })).rejects.toThrow(
-        NotFoundError,
-      );
+      await expect(
+        policy.registerEntry({
+          reservationId: 'reservation-1',
+          now: new Date(),
+        }),
+      ).rejects.toThrow(NotFoundError);
     });
 
     it('lanza ReservationExpiredError si la reserva ya no esta vigente', async () => {
-      reservationsRepo.findById.mockResolvedValue(buildReservation({ status: ReservationStatus.EXPIRED }));
-
-      await expect(policy.registerEntry({ reservationId: 'reservation-1', now: new Date() })).rejects.toThrow(
-        ReservationExpiredError,
+      reservationsRepo.findById.mockResolvedValue(
+        buildReservation({ status: ReservationStatus.EXPIRED }),
       );
+
+      await expect(
+        policy.registerEntry({
+          reservationId: 'reservation-1',
+          now: new Date(),
+        }),
+      ).rejects.toThrow(ReservationExpiredError);
     });
 
     it('lanza SessionAlreadyActiveError si la reserva ya tiene una sesion activa (anti-replay)', async () => {
       reservationsRepo.findById.mockResolvedValue(buildReservation());
-      sessionsRepo.findByReservationId.mockResolvedValue(buildSession({ status: SessionStatus.ACTIVE }));
-
-      await expect(policy.registerEntry({ reservationId: 'reservation-1', now: new Date() })).rejects.toThrow(
-        SessionAlreadyActiveError,
+      sessionsRepo.findByReservationId.mockResolvedValue(
+        buildSession({ status: SessionStatus.ACTIVE }),
       );
+
+      await expect(
+        policy.registerEntry({
+          reservationId: 'reservation-1',
+          now: new Date(),
+        }),
+      ).rejects.toThrow(SessionAlreadyActiveError);
       expect(sessionsRepo.create).not.toHaveBeenCalled();
     });
 
     it('permite reingresar si la sesion previa de la reserva ya esta completada', async () => {
       reservationsRepo.findById.mockResolvedValue(buildReservation());
-      sessionsRepo.findByReservationId.mockResolvedValue(buildSession({ status: SessionStatus.COMPLETED }));
+      sessionsRepo.findByReservationId.mockResolvedValue(
+        buildSession({ status: SessionStatus.COMPLETED }),
+      );
       sessionsRepo.create.mockResolvedValue(buildSession());
 
-      const session = await policy.registerEntry({ reservationId: 'reservation-1', now: new Date() });
+      const session = await policy.registerEntry({
+        reservationId: 'reservation-1',
+        now: new Date(),
+      });
 
       expect(session).toBeDefined();
       expect(sessionsRepo.create).toHaveBeenCalled();
@@ -141,13 +174,22 @@ describe('DefaultParkingPolicy', () => {
 
     it('crea la sesion y ocupa la cochera cuando no hay sesion activa previa', async () => {
       const now = new Date();
-      reservationsRepo.findById.mockResolvedValue(buildReservation({ status: ReservationStatus.PENDING }));
+      reservationsRepo.findById.mockResolvedValue(
+        buildReservation({ status: ReservationStatus.PENDING }),
+      );
       sessionsRepo.findByReservationId.mockResolvedValue(null);
       sessionsRepo.create.mockResolvedValue(buildSession());
 
-      const session = await policy.registerEntry({ reservationId: 'reservation-1', now });
+      const session = await policy.registerEntry({
+        reservationId: 'reservation-1',
+        now,
+      });
 
-      expect(reservationsRepo.updateStatus).toHaveBeenCalledWith('reservation-1', ReservationStatus.CONFIRMED, now);
+      expect(reservationsRepo.updateStatus).toHaveBeenCalledWith(
+        'reservation-1',
+        ReservationStatus.CONFIRMED,
+        now,
+      );
       expect(sessionsRepo.create).toHaveBeenCalledWith({
         reservationId: 'reservation-1',
         userId: 'user-1',
@@ -163,41 +205,77 @@ describe('DefaultParkingPolicy', () => {
     it('rechaza si no existe una sesion activa', async () => {
       sessionsRepo.findById.mockResolvedValue(null);
 
-      const result = await policy.registerExit({ sessionId: 'session-1', now: new Date() });
+      const result = await policy.registerExit({
+        sessionId: 'session-1',
+        now: new Date(),
+      });
 
-      expect(result).toEqual({ outcome: 'REJECTED', reason: 'NO_ACTIVE_SESSION' });
+      expect(result).toEqual({
+        outcome: 'REJECTED',
+        reason: 'NO_ACTIVE_SESSION',
+      });
     });
 
     it('rechaza si la sesion ya fue completada', async () => {
-      sessionsRepo.findById.mockResolvedValue(buildSession({ status: SessionStatus.COMPLETED }));
+      sessionsRepo.findById.mockResolvedValue(
+        buildSession({ status: SessionStatus.COMPLETED }),
+      );
 
-      const result = await policy.registerExit({ sessionId: 'session-1', now: new Date() });
+      const result = await policy.registerExit({
+        sessionId: 'session-1',
+        now: new Date(),
+      });
 
-      expect(result).toEqual({ outcome: 'REJECTED', reason: 'NO_ACTIVE_SESSION' });
+      expect(result).toEqual({
+        outcome: 'REJECTED',
+        reason: 'NO_ACTIVE_SESSION',
+      });
     });
 
     it('rechaza si no hay pago aprobado', async () => {
       sessionsRepo.findById.mockResolvedValue(buildSession());
-      paymentsRepo.findBySessionId.mockResolvedValue(buildPayment({ status: PaymentStatus.PENDING }));
+      paymentsRepo.findBySessionId.mockResolvedValue(
+        buildPayment({ status: PaymentStatus.PENDING }),
+      );
 
-      const result = await policy.registerExit({ sessionId: 'session-1', now: new Date() });
+      const result = await policy.registerExit({
+        sessionId: 'session-1',
+        now: new Date(),
+      });
 
-      expect(result).toEqual({ outcome: 'REJECTED', reason: 'PAYMENT_NOT_APPROVED' });
+      expect(result).toEqual({
+        outcome: 'REJECTED',
+        reason: 'PAYMENT_NOT_APPROVED',
+      });
     });
 
     it('libera la cochera y completa la reserva cuando el pago esta aprobado', async () => {
       const now = new Date();
       const activeSession = buildSession();
-      const completedSession = buildSession({ status: SessionStatus.COMPLETED, exitAt: now });
-      sessionsRepo.findById.mockResolvedValueOnce(activeSession).mockResolvedValueOnce(completedSession);
+      const completedSession = buildSession({
+        status: SessionStatus.COMPLETED,
+        exitAt: now,
+      });
+      sessionsRepo.findById
+        .mockResolvedValueOnce(activeSession)
+        .mockResolvedValueOnce(completedSession);
       paymentsRepo.findBySessionId.mockResolvedValue(buildPayment());
 
       const result = await policy.registerExit({ sessionId: 'session-1', now });
 
       expect(sessionsRepo.markCompleted).toHaveBeenCalledWith('session-1', now);
-      expect(slotsRepo.updateStatus).toHaveBeenCalledWith('slot-1', 'DISPONIBLE');
-      expect(reservationsRepo.updateStatus).toHaveBeenCalledWith('reservation-1', ReservationStatus.COMPLETED);
-      expect(result).toEqual({ outcome: 'RELEASED', session: completedSession });
+      expect(slotsRepo.updateStatus).toHaveBeenCalledWith(
+        'slot-1',
+        'DISPONIBLE',
+      );
+      expect(reservationsRepo.updateStatus).toHaveBeenCalledWith(
+        'reservation-1',
+        ReservationStatus.COMPLETED,
+      );
+      expect(result).toEqual({
+        outcome: 'RELEASED',
+        session: completedSession,
+      });
     });
   });
 });

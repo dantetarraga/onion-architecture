@@ -1,6 +1,12 @@
-import { ParkingSession, ParkingSessionProps } from '../../../domain/entities/parking-session.entity';
+import {
+  ParkingSession,
+  ParkingSessionProps,
+} from '../../../domain/entities/parking-session.entity';
 import { Payment, PaymentProps } from '../../../domain/entities/payment.entity';
-import { Reservation, ReservationProps } from '../../../domain/entities/reservation.entity';
+import {
+  Reservation,
+  ReservationProps,
+} from '../../../domain/entities/reservation.entity';
 import { PaymentMethodType } from '../../../domain/enums/payment-method-type.enum';
 import { PaymentStatus } from '../../../domain/enums/payment-status.enum';
 import { ReservationStatus } from '../../../domain/enums/reservation-status.enum';
@@ -16,7 +22,9 @@ import type { ClockPort } from '../../ports/clock.port';
 import type { RealtimeNotifierPort } from '../../ports/realtime-notifier.port';
 import { RegisterPaymentUseCase } from './register-payment.use-case';
 
-function buildReservation(overrides: Partial<ReservationProps> = {}): Reservation {
+function buildReservation(
+  overrides: Partial<ReservationProps> = {},
+): Reservation {
   return new Reservation({
     id: 'reservation-1',
     userId: 'user-1',
@@ -32,7 +40,9 @@ function buildReservation(overrides: Partial<ReservationProps> = {}): Reservatio
   });
 }
 
-function buildSession(overrides: Partial<ParkingSessionProps> = {}): ParkingSession {
+function buildSession(
+  overrides: Partial<ParkingSessionProps> = {},
+): ParkingSession {
   return new ParkingSession({
     id: 'session-1',
     reservationId: 'reservation-1',
@@ -125,23 +135,44 @@ describe('RegisterPaymentUseCase', () => {
   });
 
   it('lanza NotFoundError si la sesion no pertenece al usuario', async () => {
-    sessionsRepo.findById.mockResolvedValue(buildSession({ userId: 'other-user' }));
+    sessionsRepo.findById.mockResolvedValue(
+      buildSession({ userId: 'other-user' }),
+    );
 
     await expect(
-      useCase.execute({ sessionId: 'session-1', userId: 'user-1', method: PaymentMethodType.CASH }),
+      useCase.execute({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        method: PaymentMethodType.CASH,
+      }),
     ).rejects.toThrow(NotFoundError);
   });
 
   it('crea un pago nuevo cuando la sesion todavia no tiene ninguno', async () => {
     paymentsRepo.findBySessionId.mockResolvedValue(null);
-    pricingPolicy.calculate.mockResolvedValue({ amount: 8, currency: 'PEN', breakdown: [] });
-    paymentMethod.charge.mockResolvedValue({ status: 'APPROVED', externalReference: 'MOCK-NEW' });
+    pricingPolicy.calculate.mockResolvedValue({
+      amount: 8,
+      currency: 'PEN',
+      breakdown: [],
+    });
+    paymentMethod.charge.mockResolvedValue({
+      status: 'APPROVED',
+      externalReference: 'MOCK-NEW',
+    });
     paymentsRepo.create.mockResolvedValue(buildPayment({ amount: 8 }));
 
-    const result = await useCase.execute({ sessionId: 'session-1', userId: 'user-1', method: PaymentMethodType.CASH });
+    const result = await useCase.execute({
+      sessionId: 'session-1',
+      userId: 'user-1',
+      method: PaymentMethodType.CASH,
+    });
 
     expect(paymentsRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: 'session-1', amount: 8, status: PaymentStatus.APPROVED }),
+      expect.objectContaining({
+        sessionId: 'session-1',
+        amount: 8,
+        status: PaymentStatus.APPROVED,
+      }),
     );
     expect(result.amount).toBe(8);
   });
@@ -149,9 +180,17 @@ describe('RegisterPaymentUseCase', () => {
   it('devuelve el pago existente sin cobrar de nuevo si ya cubre la tarifa recalculada', async () => {
     const existing = buildPayment({ amount: 10 });
     paymentsRepo.findBySessionId.mockResolvedValue(existing);
-    pricingPolicy.calculate.mockResolvedValue({ amount: 10, currency: 'PEN', breakdown: [] });
+    pricingPolicy.calculate.mockResolvedValue({
+      amount: 10,
+      currency: 'PEN',
+      breakdown: [],
+    });
 
-    const result = await useCase.execute({ sessionId: 'session-1', userId: 'user-1', method: PaymentMethodType.CASH });
+    const result = await useCase.execute({
+      sessionId: 'session-1',
+      userId: 'user-1',
+      method: PaymentMethodType.CASH,
+    });
 
     expect(paymentMethod.charge).not.toHaveBeenCalled();
     expect(paymentsRepo.increaseAmount).not.toHaveBeenCalled();
@@ -161,11 +200,24 @@ describe('RegisterPaymentUseCase', () => {
   it('cobra y suma solo la diferencia cuando el pago existente no cubre la sobre-estadia (E3, top-up)', async () => {
     const existing = buildPayment({ amount: 5 });
     paymentsRepo.findBySessionId.mockResolvedValue(existing);
-    pricingPolicy.calculate.mockResolvedValue({ amount: 12, currency: 'PEN', breakdown: [] });
-    paymentMethod.charge.mockResolvedValue({ status: 'APPROVED', externalReference: 'MOCK-TOPUP' });
-    paymentsRepo.increaseAmount.mockResolvedValue(buildPayment({ amount: 12, externalReference: 'MOCK-1,MOCK-TOPUP' }));
+    pricingPolicy.calculate.mockResolvedValue({
+      amount: 12,
+      currency: 'PEN',
+      breakdown: [],
+    });
+    paymentMethod.charge.mockResolvedValue({
+      status: 'APPROVED',
+      externalReference: 'MOCK-TOPUP',
+    });
+    paymentsRepo.increaseAmount.mockResolvedValue(
+      buildPayment({ amount: 12, externalReference: 'MOCK-1,MOCK-TOPUP' }),
+    );
 
-    const result = await useCase.execute({ sessionId: 'session-1', userId: 'user-1', method: PaymentMethodType.CASH });
+    const result = await useCase.execute({
+      sessionId: 'session-1',
+      userId: 'user-1',
+      method: PaymentMethodType.CASH,
+    });
 
     expect(paymentMethod.charge).toHaveBeenCalledWith({
       sessionId: 'session-1',
@@ -173,7 +225,12 @@ describe('RegisterPaymentUseCase', () => {
       currency: 'PEN',
       method: PaymentMethodType.CASH,
     });
-    expect(paymentsRepo.increaseAmount).toHaveBeenCalledWith('payment-1', 7, 'MOCK-TOPUP', now);
+    expect(paymentsRepo.increaseAmount).toHaveBeenCalledWith(
+      'payment-1',
+      7,
+      'MOCK-TOPUP',
+      now,
+    );
     expect(paymentsRepo.create).not.toHaveBeenCalled();
     expect(result.amount).toBe(12);
   });
@@ -181,10 +238,21 @@ describe('RegisterPaymentUseCase', () => {
   it('mantiene el pago original si el cobro de la diferencia es rechazado', async () => {
     const existing = buildPayment({ amount: 5 });
     paymentsRepo.findBySessionId.mockResolvedValue(existing);
-    pricingPolicy.calculate.mockResolvedValue({ amount: 12, currency: 'PEN', breakdown: [] });
-    paymentMethod.charge.mockResolvedValue({ status: 'REJECTED', externalReference: 'MOCK-REJECTED' });
+    pricingPolicy.calculate.mockResolvedValue({
+      amount: 12,
+      currency: 'PEN',
+      breakdown: [],
+    });
+    paymentMethod.charge.mockResolvedValue({
+      status: 'REJECTED',
+      externalReference: 'MOCK-REJECTED',
+    });
 
-    const result = await useCase.execute({ sessionId: 'session-1', userId: 'user-1', method: PaymentMethodType.CASH });
+    const result = await useCase.execute({
+      sessionId: 'session-1',
+      userId: 'user-1',
+      method: PaymentMethodType.CASH,
+    });
 
     expect(paymentsRepo.increaseAmount).not.toHaveBeenCalled();
     expect(result).toBe(existing);

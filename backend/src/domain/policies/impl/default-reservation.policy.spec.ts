@@ -14,6 +14,7 @@ function buildReservation(overrides: Partial<ReservationProps> = {}): Reservatio
     requestedType: SlotType.REGULAR,
     status: ReservationStatus.PENDING,
     createdAt: new Date('2026-01-01T09:00:00Z'),
+    startAt: new Date('2026-01-01T09:00:00Z'),
     expiresAt: new Date('2026-01-01T09:20:00Z'),
     confirmedAt: null,
     ...overrides,
