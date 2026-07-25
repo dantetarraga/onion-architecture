@@ -6,7 +6,11 @@ import { SlotType } from '../../../domain/enums/slot-type.enum';
 import { NoAvailabilityError } from '../../../domain/errors/no-availability.error';
 import { ReservationAlreadyActiveError } from '../../../domain/errors/reservation-already-active.error';
 import type { ReservationRepositoryPort } from '../../../domain/ports/reservation.repository.port';
-import { RESERVATION_POLICY, RESERVATION_REPOSITORY, SLOT_ASSIGNMENT_POLICY } from '../../../domain/ports/tokens';
+import {
+  RESERVATION_POLICY,
+  RESERVATION_REPOSITORY,
+  SLOT_ASSIGNMENT_POLICY,
+} from '../../../domain/ports/tokens';
 import type { ReservationPolicy } from '../../../domain/policies/reservation.policy';
 import type { SlotAssignmentPolicy } from '../../../domain/policies/slot-assignment.policy';
 import type { ClockPort } from '../../ports/clock.port';
@@ -17,24 +21,36 @@ export interface CreateReservationInput {
   userId: string;
   branchId: string;
   slotType?: SlotType;
+  startAt?: Date;
 }
 
 export type CreateReservationResult =
   | { outcome: 'CREATED'; reservation: Reservation }
-  | { outcome: 'SUGGEST_OTHER_BRANCH'; suggestedBranch: Branch; distanceKm: number };
+  | {
+      outcome: 'SUGGEST_OTHER_BRANCH';
+      suggestedBranch: Branch;
+      distanceKm: number;
+    };
 
 @Injectable()
 export class CreateReservationUseCase {
   constructor(
-    @Inject(RESERVATION_REPOSITORY) private readonly reservations: ReservationRepositoryPort,
-    @Inject(RESERVATION_POLICY) private readonly reservationPolicy: ReservationPolicy,
-    @Inject(SLOT_ASSIGNMENT_POLICY) private readonly slotAssignmentPolicy: SlotAssignmentPolicy,
+    @Inject(RESERVATION_REPOSITORY)
+    private readonly reservations: ReservationRepositoryPort,
+    @Inject(RESERVATION_POLICY)
+    private readonly reservationPolicy: ReservationPolicy,
+    @Inject(SLOT_ASSIGNMENT_POLICY)
+    private readonly slotAssignmentPolicy: SlotAssignmentPolicy,
     @Inject(CLOCK) private readonly clock: ClockPort,
     @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifierPort,
   ) {}
 
-  async execute(input: CreateReservationInput): Promise<CreateReservationResult> {
-    const eligibility = await this.reservationPolicy.canCreateReservation(input.userId);
+  async execute(
+    input: CreateReservationInput,
+  ): Promise<CreateReservationResult> {
+    const eligibility = await this.reservationPolicy.canCreateReservation(
+      input.userId,
+    );
     if (!eligibility.allowed) {
       throw new ReservationAlreadyActiveError();
     }
@@ -57,13 +73,15 @@ export class CreateReservationUseCase {
     }
 
     const now = this.clock.now();
-    const expiresAt = this.reservationPolicy.calculateExpiresAt(now);
+    const startAt = input.startAt ?? now;
+    const expiresAt = this.reservationPolicy.calculateExpiresAt(startAt);
 
     const reservation = await this.reservations.create({
       userId: input.userId,
       branchId: input.branchId,
       slotId: assignment.slot.id,
       requestedType: input.slotType ?? assignment.slot.type,
+      startAt,
       expiresAt,
     });
 

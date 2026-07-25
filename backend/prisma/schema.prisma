@@ -105,6 +105,7 @@ model Reservation {
   requestedType SlotType
   status        ReservationStatus @default(PENDING)
   createdAt     DateTime          @default(now())
+  startAt       DateTime          @default(now())
   expiresAt     DateTime
   confirmedAt   DateTime?
   session       ParkingSession?

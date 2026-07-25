@@ -6,6 +6,7 @@ export interface CreateReservationData {
   branchId: string;
   slotId: string;
   requestedType: import('../enums/slot-type.enum').SlotType;
+  startAt: Date;
   expiresAt: Date;
 }
 

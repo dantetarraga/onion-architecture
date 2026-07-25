@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { SlotType } from '../../../../domain/enums/slot-type.enum';
 
 export class ConfirmSuggestionDto {
@@ -8,4 +8,8 @@ export class ConfirmSuggestionDto {
   @IsOptional()
   @IsEnum(SlotType)
   slotType?: SlotType;
+
+  @IsOptional()
+  @IsDateString()
+  startAt?: string;
 }

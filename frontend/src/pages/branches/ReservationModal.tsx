@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { branchesApi } from '@/api/branches.api';
@@ -19,6 +20,9 @@ interface ReservationModalProps {
 export function ReservationModal({ branch, onClose }: ReservationModalProps) {
   const [availability, setAvailability] = useState<SlotAvailabilityCount[] | null>(null);
   const [slotType, setSlotType] = useState<SlotType | ''>('');
+  const [reservationMode, setReservationMode] = useState<'IMMEDIATE' | 'SCHEDULED'>('IMMEDIATE');
+  const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [suggestion, setSuggestion] = useState<{ suggestedBranch: Branch; distanceKm: number } | null>(null);
   const navigate = useNavigate();
@@ -27,6 +31,8 @@ export function ReservationModal({ branch, onClose }: ReservationModalProps) {
     if (!branch) return;
     setAvailability(null);
     setSlotType('');
+    setStartDate('');
+    setStartTime('');
     setSuggestion(null);
     branchesApi
       .availability(branch.id)
@@ -37,11 +43,20 @@ export function ReservationModal({ branch, onClose }: ReservationModalProps) {
   if (!branch) return null;
 
   async function handleConfirm(targetBranchId: string, isSuggestion: boolean) {
+    if (reservationMode === 'SCHEDULED' && (!startDate || !startTime)) {
+      notifyError('Selecciona tanto la fecha como la hora de inicio.');
+      return;
+    }
+
     setSubmitting(true);
     try {
+      const startAt =
+        reservationMode === 'SCHEDULED' && startDate && startTime
+          ? new Date(`${startDate}T${startTime}`).toISOString()
+          : undefined;
       const result = isSuggestion
-        ? await reservationsApi.confirmSuggestion(targetBranchId, slotType || undefined)
-        : await reservationsApi.create(targetBranchId, slotType || undefined);
+        ? await reservationsApi.confirmSuggestion(targetBranchId, slotType || undefined, startAt)
+        : await reservationsApi.create(targetBranchId, slotType || undefined, startAt);
 
       if (result.outcome === 'CREATED') {
         notifySuccess('Reserva creada. Tienes 20 minutos para hacer check-in.');
@@ -106,6 +121,56 @@ export function ReservationModal({ branch, onClose }: ReservationModalProps) {
               ))}
             </Select>
           )}
+
+              <div className="grid gap-3 md:grid-cols-2">
+            <button
+              type="button"
+              className={`rounded border px-4 py-3 text-left ${
+                reservationMode === 'IMMEDIATE'
+                  ? 'border-signal-yellow-600 bg-signal-yellow-50 text-asphalt'
+                  : 'border-steel-200 bg-white text-steel'
+              }`}
+              onClick={() => setReservationMode('IMMEDIATE')}
+            >
+              <p className="font-medium">Reservar ahora</p>
+              <p className="text-xs text-steel">Genera la reserva para este momento</p>
+            </button>
+            <button
+              type="button"
+              className={`rounded border px-4 py-3 text-left ${
+                reservationMode === 'SCHEDULED'
+                  ? 'border-signal-yellow-600 bg-signal-yellow-50 text-asphalt'
+                  : 'border-steel-200 bg-white text-steel'
+              }`}
+              onClick={() => setReservationMode('SCHEDULED')}
+            >
+              <p className="font-medium">Reservar para después</p>
+              <p className="text-xs text-steel">Elige fecha y hora de inicio</p>
+            </button>
+          </div>
+
+          {reservationMode === 'SCHEDULED' && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input
+                label="Fecha de inicio"
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+              />
+              <Input
+                label="Hora de inicio"
+                type="time"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+              />
+            </div>
+          )}
+
+          <p className="-mt-1 text-xs text-steel">
+            {reservationMode === 'IMMEDIATE'
+              ? 'La reserva se crea de inmediato con la hora actual.'
+              : 'Selecciona fecha y hora para programar la reserva.'}
+          </p>
 
           <Button loading={submitting} disabled={!availability} onClick={() => handleConfirm(branch.id, false)}>
             Confirmar reserva

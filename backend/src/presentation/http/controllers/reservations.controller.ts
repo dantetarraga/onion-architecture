@@ -28,7 +28,12 @@ export class ReservationsController {
 
   @Post()
   create(@CurrentUser() user: AuthTokenPayload, @Body() dto: CreateReservationDto) {
-    return this.createReservation.execute({ userId: user.sub, branchId: dto.branchId, slotType: dto.slotType });
+    return this.createReservation.execute({
+      userId: user.sub,
+      branchId: dto.branchId,
+      slotType: dto.slotType,
+      startAt: dto.startAt ? new Date(dto.startAt) : undefined,
+    });
   }
 
   @Post('confirm-suggestion')
@@ -37,6 +42,7 @@ export class ReservationsController {
       userId: user.sub,
       branchId: dto.suggestedBranchId,
       slotType: dto.slotType,
+      startAt: dto.startAt ? new Date(dto.startAt) : undefined,
     });
   }
 

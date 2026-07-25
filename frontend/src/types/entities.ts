@@ -5,7 +5,7 @@ import type {
   Role,
   SessionStatus,
   SlotType,
-} from './enums';
+} from "./enums";
 
 export interface Branch {
   id: string;
@@ -43,6 +43,7 @@ export interface Reservation {
   requestedType: SlotType;
   status: ReservationStatus;
   createdAt: string;
+  startAt: string;
   expiresAt: string;
   confirmedAt: string | null;
 }
@@ -75,7 +76,7 @@ export interface PricingBreakdownItem {
 
 export interface PricingResult {
   amount: number;
-  currency: 'PEN';
+  currency: "PEN";
   breakdown: PricingBreakdownItem[];
 }
 
@@ -87,17 +88,19 @@ export interface AuthUser {
 }
 
 export interface CreateReservationCreated {
-  outcome: 'CREATED';
+  outcome: "CREATED";
   reservation: Reservation;
 }
 
 export interface CreateReservationSuggest {
-  outcome: 'SUGGEST_OTHER_BRANCH';
+  outcome: "SUGGEST_OTHER_BRANCH";
   suggestedBranch: Branch;
   distanceKm: number;
 }
 
-export type CreateReservationResult = CreateReservationCreated | CreateReservationSuggest;
+export type CreateReservationResult =
+  | CreateReservationCreated
+  | CreateReservationSuggest;
 
 export interface RevenueReportRow {
   branch: Branch;

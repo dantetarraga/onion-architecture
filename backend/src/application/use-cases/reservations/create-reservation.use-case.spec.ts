@@ -1,6 +1,12 @@
 import { Branch, BranchProps } from '../../../domain/entities/branch.entity';
-import { ParkingSlot, ParkingSlotProps } from '../../../domain/entities/parking-slot.entity';
-import { Reservation, ReservationProps } from '../../../domain/entities/reservation.entity';
+import {
+  ParkingSlot,
+  ParkingSlotProps,
+} from '../../../domain/entities/parking-slot.entity';
+import {
+  Reservation,
+  ReservationProps,
+} from '../../../domain/entities/reservation.entity';
 import { ReservationStatus } from '../../../domain/enums/reservation-status.enum';
 import { SlotStatus } from '../../../domain/enums/slot-status.enum';
 import { SlotType } from '../../../domain/enums/slot-type.enum';
@@ -37,7 +43,9 @@ function buildSlot(overrides: Partial<ParkingSlotProps> = {}): ParkingSlot {
   });
 }
 
-function buildReservation(overrides: Partial<ReservationProps> = {}): Reservation {
+function buildReservation(
+  overrides: Partial<ReservationProps> = {},
+): Reservation {
   return new Reservation({
     id: 'reservation-1',
     userId: 'user-1',
@@ -46,6 +54,7 @@ function buildReservation(overrides: Partial<ReservationProps> = {}): Reservatio
     requestedType: SlotType.REGULAR,
     status: ReservationStatus.PENDING,
     createdAt: new Date(),
+    startAt: new Date(),
     expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     confirmedAt: null,
     ...overrides,
@@ -92,8 +101,16 @@ describe('CreateReservationUseCase', () => {
     jest.clearAllMocks();
     clock.now.mockReturnValue(now);
     reservationPolicy.canCreateReservation.mockResolvedValue({ allowed: true });
-    reservationPolicy.calculateExpiresAt.mockReturnValue(new Date(now.getTime() + 15 * 60 * 1000));
-    useCase = new CreateReservationUseCase(reservationsRepo, reservationPolicy, slotAssignmentPolicy, clock, notifier);
+    reservationPolicy.calculateExpiresAt.mockReturnValue(
+      new Date(now.getTime() + 15 * 60 * 1000),
+    );
+    useCase = new CreateReservationUseCase(
+      reservationsRepo,
+      reservationPolicy,
+      slotAssignmentPolicy,
+      clock,
+      notifier,
+    );
   });
 
   /**
@@ -111,9 +128,15 @@ describe('CreateReservationUseCase', () => {
       distanceKm: 2.4,
     });
 
-    const confirmResult = await useCase.execute({ userId: 'user-1', branchId: 'branch-B' });
+    const confirmResult = await useCase.execute({
+      userId: 'user-1',
+      branchId: 'branch-B',
+    });
 
-    expect(slotAssignmentPolicy.assign).toHaveBeenCalledWith({ branchId: 'branch-B', slotType: undefined });
+    expect(slotAssignmentPolicy.assign).toHaveBeenCalledWith({
+      branchId: 'branch-B',
+      slotType: undefined,
+    });
     expect(confirmResult.outcome).toBe('SUGGEST_OTHER_BRANCH');
     if (confirmResult.outcome === 'SUGGEST_OTHER_BRANCH') {
       expect(confirmResult.suggestedBranch.id).toBe('branch-C');
@@ -123,10 +146,18 @@ describe('CreateReservationUseCase', () => {
 
   it('al confirmar la sucursal sugerida B con cupo, crea la reserva ahi mismo', async () => {
     const slot = buildSlot({ branchId: 'branch-B' });
-    slotAssignmentPolicy.assign.mockResolvedValueOnce({ outcome: 'ASSIGNED', slot });
-    reservationsRepo.create.mockResolvedValue(buildReservation({ branchId: 'branch-B', slotId: slot.id }));
+    slotAssignmentPolicy.assign.mockResolvedValueOnce({
+      outcome: 'ASSIGNED',
+      slot,
+    });
+    reservationsRepo.create.mockResolvedValue(
+      buildReservation({ branchId: 'branch-B', slotId: slot.id }),
+    );
 
-    const result = await useCase.execute({ userId: 'user-1', branchId: 'branch-B' });
+    const result = await useCase.execute({
+      userId: 'user-1',
+      branchId: 'branch-B',
+    });
 
     expect(result.outcome).toBe('CREATED');
     expect(reservationsRepo.create).toHaveBeenCalledWith(
@@ -134,10 +165,66 @@ describe('CreateReservationUseCase', () => {
     );
   });
 
-  it('lanza NoAvailabilityError si ninguna sucursal cercana tiene cupo', async () => {
-    slotAssignmentPolicy.assign.mockResolvedValueOnce({ outcome: 'NO_AVAILABILITY' });
+  it('usa la fecha y hora de inicio seleccionada para calcular la ventana de reserva', async () => {
+    const slot = buildSlot({ branchId: 'branch-B' });
+    const scheduledStart = new Date('2026-07-22T13:30:00.000Z');
+    slotAssignmentPolicy.assign.mockResolvedValueOnce({
+      outcome: 'ASSIGNED',
+      slot,
+    });
+    reservationsRepo.create.mockResolvedValue(
+      buildReservation({ branchId: 'branch-B', slotId: slot.id }),
+    );
 
-    await expect(useCase.execute({ userId: 'user-1', branchId: 'branch-B' })).rejects.toThrow(NoAvailabilityError);
+    await useCase.execute({
+      userId: 'user-1',
+      branchId: 'branch-B',
+      startAt: scheduledStart,
+    } as any);
+
+    expect(reservationPolicy.calculateExpiresAt).toHaveBeenCalledWith(
+      scheduledStart,
+    );
+    expect(reservationsRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branchId: 'branch-B',
+        slotId: slot.id,
+        startAt: scheduledStart,
+      }),
+    );
+  });
+
+  it('al crear reserva inmediata usa ahora como startAt', async () => {
+    const slot = buildSlot({ branchId: 'branch-B' });
+    const now = new Date('2026-07-22T12:00:00.000Z');
+    clock.now.mockReturnValue(now);
+    slotAssignmentPolicy.assign.mockResolvedValueOnce({
+      outcome: 'ASSIGNED',
+      slot,
+    });
+    reservationsRepo.create.mockResolvedValue(
+      buildReservation({ branchId: 'branch-B', slotId: slot.id, startAt: now }),
+    );
+
+    await useCase.execute({ userId: 'user-1', branchId: 'branch-B' } as any);
+
+    expect(reservationsRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branchId: 'branch-B',
+        slotId: slot.id,
+        startAt: now,
+      }),
+    );
+  });
+
+  it('lanza NoAvailabilityError si ninguna sucursal cercana tiene cupo', async () => {
+    slotAssignmentPolicy.assign.mockResolvedValueOnce({
+      outcome: 'NO_AVAILABILITY',
+    });
+
+    await expect(
+      useCase.execute({ userId: 'user-1', branchId: 'branch-B' }),
+    ).rejects.toThrow(NoAvailabilityError);
     expect(reservationsRepo.create).not.toHaveBeenCalled();
   });
 });

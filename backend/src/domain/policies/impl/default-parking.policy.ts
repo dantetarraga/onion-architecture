@@ -2,13 +2,19 @@ import { ParkingSession } from '../../entities/parking-session.entity';
 import { ReservationStatus } from '../../enums/reservation-status.enum';
 import { SlotStatus } from '../../enums/slot-status.enum';
 import { ReservationExpiredError } from '../../errors/reservation-expired.error';
+import { ReservationNotStartedError } from '../../errors/reservation-not-started.error';
 import { SessionAlreadyActiveError } from '../../errors/session-already-active.error';
 import { NotFoundError } from '../../errors/not-found.error';
 import { ParkingSessionRepositoryPort } from '../../ports/parking-session.repository.port';
 import { ParkingSlotRepositoryPort } from '../../ports/parking-slot.repository.port';
 import { PaymentRepositoryPort } from '../../ports/payment.repository.port';
 import { ReservationRepositoryPort } from '../../ports/reservation.repository.port';
-import { ExitResult, ParkingPolicy, RegisterEntryInput, RegisterExitInput } from '../parking.policy';
+import {
+  ExitResult,
+  ParkingPolicy,
+  RegisterEntryInput,
+  RegisterExitInput,
+} from '../parking.policy';
 
 /** Politicas 5 y 6: registro de ingreso/salida y transiciones de estado de cocheras. */
 export class DefaultParkingPolicy implements ParkingPolicy {
@@ -32,13 +38,21 @@ export class DefaultParkingPolicy implements ParkingPolicy {
       throw new ReservationExpiredError();
     }
 
+    if (input.now.getTime() < reservation.startAt.getTime()) {
+      throw new ReservationNotStartedError();
+    }
+
     const existing = await this.sessions.findByReservationId(reservation.id);
     if (existing && existing.isActive()) {
       throw new SessionAlreadyActiveError();
     }
 
     if (reservation.status === ReservationStatus.PENDING) {
-      await this.reservations.updateStatus(reservation.id, ReservationStatus.CONFIRMED, input.now);
+      await this.reservations.updateStatus(
+        reservation.id,
+        ReservationStatus.CONFIRMED,
+        input.now,
+      );
     }
 
     const session = await this.sessions.create({
@@ -66,7 +80,10 @@ export class DefaultParkingPolicy implements ParkingPolicy {
 
     await this.sessions.markCompleted(session.id, input.now);
     await this.releaseSlot(session.slotId);
-    await this.reservations.updateStatus(session.reservationId, ReservationStatus.COMPLETED);
+    await this.reservations.updateStatus(
+      session.reservationId,
+      ReservationStatus.COMPLETED,
+    );
 
     const updatedSession = await this.sessions.findById(session.id);
     return { outcome: 'RELEASED', session: updatedSession as ParkingSession };

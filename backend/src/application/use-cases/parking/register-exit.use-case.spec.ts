@@ -1,6 +1,12 @@
-import { ParkingSession, ParkingSessionProps } from '../../../domain/entities/parking-session.entity';
+import {
+  ParkingSession,
+  ParkingSessionProps,
+} from '../../../domain/entities/parking-session.entity';
 import { Payment, PaymentProps } from '../../../domain/entities/payment.entity';
-import { Reservation, ReservationProps } from '../../../domain/entities/reservation.entity';
+import {
+  Reservation,
+  ReservationProps,
+} from '../../../domain/entities/reservation.entity';
 import { PaymentStatus } from '../../../domain/enums/payment-status.enum';
 import { ReservationStatus } from '../../../domain/enums/reservation-status.enum';
 import { SessionStatus } from '../../../domain/enums/session-status.enum';
@@ -18,7 +24,9 @@ import type { QrCodePort } from '../../ports/qr-code.port';
 import type { RealtimeNotifierPort } from '../../ports/realtime-notifier.port';
 import { RegisterExitUseCase } from './register-exit.use-case';
 
-function buildReservation(overrides: Partial<ReservationProps> = {}): Reservation {
+function buildReservation(
+  overrides: Partial<ReservationProps> = {},
+): Reservation {
   return new Reservation({
     id: 'reservation-1',
     userId: 'user-1',
@@ -27,13 +35,16 @@ function buildReservation(overrides: Partial<ReservationProps> = {}): Reservatio
     requestedType: SlotType.REGULAR,
     status: ReservationStatus.CONFIRMED,
     createdAt: new Date(),
+    startAt: new Date(),
     expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     confirmedAt: new Date(),
     ...overrides,
   });
 }
 
-function buildSession(overrides: Partial<ParkingSessionProps> = {}): ParkingSession {
+function buildSession(
+  overrides: Partial<ParkingSessionProps> = {},
+): ParkingSession {
   return new ParkingSession({
     id: 'session-1',
     reservationId: 'reservation-1',
@@ -119,7 +130,11 @@ describe('RegisterExitUseCase', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     clock.now.mockReturnValue(now);
-    qrCode.verify.mockReturnValue({ type: 'EXIT', sessionId: 'session-1', expiresAt: now.getTime() + 60_000 });
+    qrCode.verify.mockReturnValue({
+      type: 'EXIT',
+      sessionId: 'session-1',
+      expiresAt: now.getTime() + 60_000,
+    });
     useCase = new RegisterExitUseCase(
       qrCode,
       parkingPolicy,
@@ -135,16 +150,22 @@ describe('RegisterExitUseCase', () => {
   it('lanza SessionNotActiveError si la sesion no existe o no esta activa', async () => {
     sessionsRepo.findById.mockResolvedValue(null);
 
-    await expect(useCase.execute({ qrPayload: 'qr' })).rejects.toThrow(SessionNotActiveError);
+    await expect(useCase.execute({ qrPayload: 'qr' })).rejects.toThrow(
+      SessionNotActiveError,
+    );
     expect(pricingPolicy.calculate).not.toHaveBeenCalled();
   });
 
   it('lanza PaymentNotApprovedError si no hay pago aprobado', async () => {
     sessionsRepo.findById.mockResolvedValue(buildSession());
     reservationsRepo.findById.mockResolvedValue(buildReservation());
-    paymentsRepo.findBySessionId.mockResolvedValue(buildPayment({ status: PaymentStatus.PENDING }));
+    paymentsRepo.findBySessionId.mockResolvedValue(
+      buildPayment({ status: PaymentStatus.PENDING }),
+    );
 
-    await expect(useCase.execute({ qrPayload: 'qr' })).rejects.toThrow(PaymentNotApprovedError);
+    await expect(useCase.execute({ qrPayload: 'qr' })).rejects.toThrow(
+      PaymentNotApprovedError,
+    );
     expect(pricingPolicy.calculate).not.toHaveBeenCalled();
   });
 
@@ -152,35 +173,70 @@ describe('RegisterExitUseCase', () => {
     sessionsRepo.findById.mockResolvedValue(buildSession());
     reservationsRepo.findById.mockResolvedValue(buildReservation());
     paymentsRepo.findBySessionId.mockResolvedValue(buildPayment({ amount: 5 }));
-    pricingPolicy.calculate.mockResolvedValue({ amount: 12.5, currency: 'PEN', breakdown: [] });
+    pricingPolicy.calculate.mockResolvedValue({
+      amount: 12.5,
+      currency: 'PEN',
+      breakdown: [],
+    });
 
-    await expect(useCase.execute({ qrPayload: 'qr' })).rejects.toThrow(OverstayPaymentInsufficientError);
+    await expect(useCase.execute({ qrPayload: 'qr' })).rejects.toThrow(
+      OverstayPaymentInsufficientError,
+    );
     expect(parkingPolicy.registerExit).not.toHaveBeenCalled();
   });
 
   it('no rechaza por diferencias de centavos dentro de la tolerancia', async () => {
     const session = buildSession();
-    const completedSession = buildSession({ status: SessionStatus.COMPLETED, exitAt: now });
+    const completedSession = buildSession({
+      status: SessionStatus.COMPLETED,
+      exitAt: now,
+    });
     sessionsRepo.findById.mockResolvedValue(session);
     reservationsRepo.findById.mockResolvedValue(buildReservation());
-    paymentsRepo.findBySessionId.mockResolvedValue(buildPayment({ amount: 10 }));
-    pricingPolicy.calculate.mockResolvedValue({ amount: 10.005, currency: 'PEN', breakdown: [] });
-    parkingPolicy.registerExit.mockResolvedValue({ outcome: 'RELEASED', session: completedSession });
+    paymentsRepo.findBySessionId.mockResolvedValue(
+      buildPayment({ amount: 10 }),
+    );
+    pricingPolicy.calculate.mockResolvedValue({
+      amount: 10.005,
+      currency: 'PEN',
+      breakdown: [],
+    });
+    parkingPolicy.registerExit.mockResolvedValue({
+      outcome: 'RELEASED',
+      session: completedSession,
+    });
 
-    await expect(useCase.execute({ qrPayload: 'qr' })).resolves.toBe(completedSession);
+    await expect(useCase.execute({ qrPayload: 'qr' })).resolves.toBe(
+      completedSession,
+    );
   });
 
   it('procede con la salida cuando el pago cubre la tarifa recalculada', async () => {
-    const completedSession = buildSession({ status: SessionStatus.COMPLETED, exitAt: now });
+    const completedSession = buildSession({
+      status: SessionStatus.COMPLETED,
+      exitAt: now,
+    });
     sessionsRepo.findById.mockResolvedValue(buildSession());
     reservationsRepo.findById.mockResolvedValue(buildReservation());
-    paymentsRepo.findBySessionId.mockResolvedValue(buildPayment({ amount: 10 }));
-    pricingPolicy.calculate.mockResolvedValue({ amount: 10, currency: 'PEN', breakdown: [] });
-    parkingPolicy.registerExit.mockResolvedValue({ outcome: 'RELEASED', session: completedSession });
+    paymentsRepo.findBySessionId.mockResolvedValue(
+      buildPayment({ amount: 10 }),
+    );
+    pricingPolicy.calculate.mockResolvedValue({
+      amount: 10,
+      currency: 'PEN',
+      breakdown: [],
+    });
+    parkingPolicy.registerExit.mockResolvedValue({
+      outcome: 'RELEASED',
+      session: completedSession,
+    });
 
     const result = await useCase.execute({ qrPayload: 'qr' });
 
-    expect(parkingPolicy.registerExit).toHaveBeenCalledWith({ sessionId: 'session-1', now });
+    expect(parkingPolicy.registerExit).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      now,
+    });
     expect(notifier.notifyExitRegistered).toHaveBeenCalledWith({
       sessionId: completedSession.id,
       branchId: 'branch-1',
