@@ -17,6 +17,7 @@ export interface CreateReservationInput {
   userId: string;
   branchId: string;
   slotType?: SlotType;
+  startAt?: Date;
 }
 
 export type CreateReservationResult =
@@ -57,13 +58,15 @@ export class CreateReservationUseCase {
     }
 
     const now = this.clock.now();
-    const expiresAt = this.reservationPolicy.calculateExpiresAt(now);
+    const startAt = input.startAt ?? now;
+    const expiresAt = this.reservationPolicy.calculateExpiresAt(startAt);
 
     const reservation = await this.reservations.create({
       userId: input.userId,
       branchId: input.branchId,
       slotId: assignment.slot.id,
       requestedType: input.slotType ?? assignment.slot.type,
+      startAt,
       expiresAt,
     });
 

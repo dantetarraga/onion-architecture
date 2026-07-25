@@ -13,6 +13,7 @@ export class ReservationMapper {
       requestedType: record.requestedType as unknown as SlotType,
       status: record.status as unknown as ReservationStatus,
       createdAt: record.createdAt,
+      startAt: record.startAt,
       expiresAt: record.expiresAt,
       confirmedAt: record.confirmedAt,
     });

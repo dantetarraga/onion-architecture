@@ -9,6 +9,7 @@ export interface ReservationProps {
   requestedType: SlotType;
   status: ReservationStatus;
   createdAt: Date;
+  startAt: Date;
   expiresAt: Date;
   confirmedAt: Date | null;
 }
@@ -21,6 +22,7 @@ export class Reservation {
   readonly requestedType: SlotType;
   readonly status: ReservationStatus;
   readonly createdAt: Date;
+  readonly startAt: Date;
   readonly expiresAt: Date;
   readonly confirmedAt: Date | null;
 
@@ -32,6 +34,7 @@ export class Reservation {
     this.requestedType = props.requestedType;
     this.status = props.status;
     this.createdAt = props.createdAt;
+    this.startAt = props.startAt;
     this.expiresAt = props.expiresAt;
     this.confirmedAt = props.confirmedAt;
   }

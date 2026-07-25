@@ -22,7 +22,9 @@ export class PrismaReservationRepository implements ReservationRepositoryPort {
     const record = await this.prisma.reservation.findFirst({
       where: {
         userId,
-        status: { in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED] },
+        status: {
+          in: [ReservationStatus.PENDING, ReservationStatus.CONFIRMED],
+        },
       },
     });
     return record ? ReservationMapper.toDomain(record) : null;
@@ -45,13 +47,18 @@ export class PrismaReservationRepository implements ReservationRepositoryPort {
         branchId: data.branchId,
         slotId: data.slotId,
         requestedType: data.requestedType,
+        startAt: data.startAt,
         expiresAt: data.expiresAt,
       },
     });
     return ReservationMapper.toDomain(record);
   }
 
-  async updateStatus(id: string, status: ReservationStatus, confirmedAt?: Date): Promise<void> {
+  async updateStatus(
+    id: string,
+    status: ReservationStatus,
+    confirmedAt?: Date,
+  ): Promise<void> {
     await this.prisma.reservation.update({
       where: { id },
       data: { status, ...(confirmedAt ? { confirmedAt } : {}) },

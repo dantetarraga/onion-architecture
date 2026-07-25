@@ -25,6 +25,7 @@ function buildReservation(overrides: Partial<ReservationProps> = {}): Reservatio
     requestedType: SlotType.REGULAR,
     status: ReservationStatus.CONFIRMED,
     createdAt: new Date(),
+    startAt: new Date(),
     expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     confirmedAt: new Date(),
     ...overrides,
