@@ -7,22 +7,22 @@ import {
   RESERVATION_REPOSITORY,
   USER_REPOSITORY,
 } from '../../domain/ports/tokens';
-import { PrismaBranchRepository } from '../persistence/prisma/repositories/prisma-branch.repository';
-import { PrismaParkingSessionRepository } from '../persistence/prisma/repositories/prisma-parking-session.repository';
-import { PrismaParkingSlotRepository } from '../persistence/prisma/repositories/prisma-parking-slot.repository';
-import { PrismaPaymentRepository } from '../persistence/prisma/repositories/prisma-payment.repository';
-import { PrismaReservationRepository } from '../persistence/prisma/repositories/prisma-reservation.repository';
-import { PrismaUserRepository } from '../persistence/prisma/repositories/prisma-user.repository';
+import { MongoBranchRepository } from '../persistence/mongodb/repositories/mongo-branch.repository';
+import { MongoParkingSessionRepository } from '../persistence/mongodb/repositories/mongo-parking-session.repository';
+import { MongoParkingSlotRepository } from '../persistence/mongodb/repositories/mongo-parking-slot.repository';
+import { MongoPaymentRepository } from '../persistence/mongodb/repositories/mongo-payment.repository';
+import { MongoReservationRepository } from '../persistence/mongodb/repositories/mongo-reservation.repository';
+import { MongoUserRepository } from '../persistence/mongodb/repositories/mongo-user.repository';
 
 @Global()
 @Module({
   providers: [
-    { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
-    { provide: BRANCH_REPOSITORY, useClass: PrismaBranchRepository },
-    { provide: PARKING_SLOT_REPOSITORY, useClass: PrismaParkingSlotRepository },
-    { provide: RESERVATION_REPOSITORY, useClass: PrismaReservationRepository },
-    { provide: PARKING_SESSION_REPOSITORY, useClass: PrismaParkingSessionRepository },
-    { provide: PAYMENT_REPOSITORY, useClass: PrismaPaymentRepository },
+    { provide: USER_REPOSITORY, useClass: MongoUserRepository },
+    { provide: BRANCH_REPOSITORY, useClass: MongoBranchRepository },
+    { provide: PARKING_SLOT_REPOSITORY, useClass: MongoParkingSlotRepository },
+    { provide: RESERVATION_REPOSITORY, useClass: MongoReservationRepository },
+    { provide: PARKING_SESSION_REPOSITORY, useClass: MongoParkingSessionRepository },
+    { provide: PAYMENT_REPOSITORY, useClass: MongoPaymentRepository },
   ],
   exports: [
     USER_REPOSITORY,

@@ -3,7 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { CoreInfraModule } from './infrastructure/modules/core-infra.module';
 import { PoliciesModule } from './infrastructure/modules/policies.module';
 import { RepositoriesModule } from './infrastructure/modules/repositories.module';
-import { PrismaModule } from './infrastructure/persistence/prisma/prisma.module';
+import { MongoModule } from './infrastructure/persistence/mongodb/mongo.module';
 import { RealtimeModule } from './infrastructure/websocket/realtime.module';
 import { AdminModule } from './modules/admin.module';
 import { AuthModule } from './modules/auth.module';
@@ -19,7 +19,7 @@ import { AppService } from './app.service';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    PrismaModule,
+    MongoModule,
     RepositoriesModule,
     PoliciesModule,
     CoreInfraModule,
