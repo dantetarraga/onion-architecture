@@ -1,17 +1,15 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  mongo:
+    image: mongo:7.0
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-parking}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parking}
-      POSTGRES_DB: ${POSTGRES_DB:-smart_parking}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-parking}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - mongo-data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-parking} -d ${POSTGRES_DB:-smart_parking}"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,10 +19,11 @@ services:
       context: ./backend
     restart: unless-stopped
     depends_on:
-      postgres:
+      mongo:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/parking}
+      MONGODB_DB: ${MONGODB_DB:-parking}
       PORT: 3000
       JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret-key-min-32-chars}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
@@ -32,7 +31,7 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
     ports:
       - "3000:3000"
-    command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/bootstrap/main.js"
+    command: ["node", "dist/bootstrap/main.js"]
 
   frontend:
     build:
@@ -47,4 +46,4 @@ services:
       - "5173:5173"
 
 volumes:
-  postgres-data:
+  mongo-data:

@@ -1,8 +1,8 @@
-import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
 import { SlotType } from '../../../../../core/domain/enums/slot-type.enum';
 
 export class ConfirmSuggestionDto {
-  @IsUUID()
+  @IsString()
   suggestedBranchId!: string;
 
   @IsOptional()

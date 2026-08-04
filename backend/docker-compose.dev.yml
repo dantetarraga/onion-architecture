@@ -1,20 +1,18 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  mongo:
+    image: mongo:7.0
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-parking}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parking}
-      POSTGRES_DB: ${POSTGRES_DB:-smart_parking}
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-parking}
     ports:
-      - "${POSTGRES_PORT:-5434}:5432"
+      - "${MONGO_PORT:-27018}:27017"
     volumes:
-      - postgres-dev-data:/var/lib/postgresql/data
+      - mongo-dev-data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-parking} -d ${POSTGRES_DB:-smart_parking}"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  postgres-dev-data:
+  mongo-dev-data:
