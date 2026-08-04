@@ -1,0 +1,13 @@
+export const REALTIME_NOTIFIER = Symbol('REALTIME_NOTIFIER');
+export const CLOCK = Symbol('CLOCK');
+export const QR_CODE = Symbol('QR_CODE');
+export const TOKEN_SERVICE = Symbol('TOKEN_SERVICE');
+export const PASSWORD_HASHER = Symbol('PASSWORD_HASHER');
+
+export const USER_REPOSITORY = Symbol('USER_REPOSITORY');
+export const BRANCH_REPOSITORY = Symbol('BRANCH_REPOSITORY');
+export const PARKING_SLOT_REPOSITORY = Symbol('PARKING_SLOT_REPOSITORY');
+export const RESERVATION_REPOSITORY = Symbol('RESERVATION_REPOSITORY');
+export const PARKING_SESSION_REPOSITORY = Symbol('PARKING_SESSION_REPOSITORY');
+export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
+export const PAYMENT_METHOD = Symbol('PAYMENT_METHOD');

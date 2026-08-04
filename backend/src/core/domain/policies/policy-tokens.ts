@@ -1,0 +1,4 @@
+export const SLOT_ASSIGNMENT_POLICY = Symbol('SLOT_ASSIGNMENT_POLICY');
+export const PRICING_POLICY = Symbol('PRICING_POLICY');
+export const RESERVATION_POLICY = Symbol('RESERVATION_POLICY');
+export const PARKING_POLICY = Symbol('PARKING_POLICY');
