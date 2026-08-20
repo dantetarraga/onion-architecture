@@ -65,6 +65,7 @@ backend/src/
       payments/                 Efectivo/Tarjeta/Yape/Plin (PaymentMethod, Strategy + Router)
       clock/                    Reloj del sistema (ClockPort)
       realtime/                 Empuja eventos a los sockets (RealtimeNotifierPort)
+      messaging/                Publica en Kafka (NotificationPublisherPort)
 
   bootstrap/                    Composition root: modulos de NestJS, wiring de DI, main.ts, app.module.ts
 ```
@@ -170,6 +171,22 @@ estructura original:
    `REALTIME_NOTIFIER`), y `core/domain/policies/policy-tokens.ts` tiene los
    segundos.
 
+6. **El publicador de notificaciones (Kafka) es un puerto OUT**, por el
+   mismo razonamiento que el notificador de tiempo real (punto 3): es el
+   nucleo (`CreateReservationUseCase`) quien **llama** a
+   `NotificationPublisherPort.publishReservationConfirmation(...)` para
+   avisar hacia afuera que hay una reserva confirmada. El nucleo no sabe
+   que existe Kafka, ni que hay un topico, ni que un servicio externo de
+   notificaciones va a leer ese mensaje y mandar un correo — solo conoce la
+   interfaz `core/ports/out/notification-publisher.port.ts`. La
+   implementacion concreta (`adapters/out/messaging/kafka-notification-publisher.adapter.ts`)
+   vive detras de esa interfaz, igual que Prisma vive detras de
+   `*.repository.port.ts`. Publicar el correo de confirmacion es un efecto
+   secundario, no una invariante de negocio: si Kafka esta caido, el
+   adaptador loguea el error y no lanza, para no poder tumbar la
+   confirmacion de la reserva (mismo criterio de resiliencia que ya se
+   aplicaba en `RealtimeNotifierAdapter`).
+
 ## 5. Ejemplo de flujo completo
 
 `POST /reservations` (crear una reserva):
@@ -184,11 +201,14 @@ adapters/in/http/controllers/reservations.controller.ts   (adaptador driving)
         -> adapters/out/persistence/prisma/repositories/prisma-reservation.repository.ts (adaptador driven)
       -> @Inject(REALTIME_NOTIFIER) RealtimeNotifierPort      (puerto out)
         -> adapters/out/realtime/realtime-notifier.adapter.ts  (adaptador driven)
+      -> @Inject(NOTIFICATION_PUBLISHER) NotificationPublisherPort (puerto out)
+        -> adapters/out/messaging/kafka-notification-publisher.adapter.ts (adaptador driven)
+          -> topico Kafka "notifications.email.confirmation" -> servicio externo de notificaciones -> correo
 ```
 
 Ni una linea de `create-reservation.use-case.ts` sabe que existe Express,
-Prisma o Socket.IO. Eso es lo que hexagonal (y onion) buscan garantizar; lo
-unico que cambio es como se nombran y agrupan las carpetas.
+Prisma, Socket.IO o Kafka. Eso es lo que hexagonal (y onion) buscan
+garantizar; lo unico que cambio es como se nombran y agrupan las carpetas.
 
 ## 6. Que se mantuvo igual
 

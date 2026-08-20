@@ -1,4 +1,5 @@
 export const REALTIME_NOTIFIER = Symbol('REALTIME_NOTIFIER');
+export const NOTIFICATION_PUBLISHER = Symbol('NOTIFICATION_PUBLISHER');
 export const CLOCK = Symbol('CLOCK');
 export const QR_CODE = Symbol('QR_CODE');
 export const TOKEN_SERVICE = Symbol('TOKEN_SERVICE');

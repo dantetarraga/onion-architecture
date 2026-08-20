@@ -5,6 +5,7 @@ import { PoliciesModule } from './policies.module';
 import { RepositoriesModule } from './repositories.module';
 import { PrismaModule } from '../adapters/out/persistence/prisma/prisma.module';
 import { RealtimeModule } from './realtime.module';
+import { MessagingModule } from './messaging.module';
 import { AdminModule } from './admin.module';
 import { AuthModule } from './auth.module';
 import { BranchesModule } from './branches.module';
@@ -24,6 +25,7 @@ import { AppService } from './app.service';
     PoliciesModule,
     CoreInfraModule,
     RealtimeModule,
+    MessagingModule,
     AuthModule,
     UsersModule,
     BranchesModule,

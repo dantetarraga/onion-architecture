@@ -7,14 +7,19 @@ import {
   Reservation,
   ReservationProps,
 } from '../../../domain/entities/reservation.entity';
+import { User, UserProps } from '../../../domain/entities/user.entity';
+import { Role } from '../../../domain/enums/role.enum';
 import { ReservationStatus } from '../../../domain/enums/reservation-status.enum';
 import { SlotStatus } from '../../../domain/enums/slot-status.enum';
 import { SlotType } from '../../../domain/enums/slot-type.enum';
 import { NoAvailabilityError } from '../../../domain/errors/no-availability.error';
 import type { ReservationPolicy } from '../../../domain/policies/reservation.policy';
 import type { SlotAssignmentPolicy } from '../../../domain/policies/slot-assignment.policy';
+import type { BranchRepositoryPort } from '../../../ports/out/branch.repository.port';
 import type { ReservationRepositoryPort } from '../../../ports/out/reservation.repository.port';
+import type { UserRepositoryPort } from '../../../ports/out/user.repository.port';
 import type { ClockPort } from '../../../ports/out/clock.port';
+import type { NotificationPublisherPort } from '../../../ports/out/notification-publisher.port';
 import type { RealtimeNotifierPort } from '../../../ports/out/realtime-notifier.port';
 import { CreateReservationUseCase } from './create-reservation.use-case';
 
@@ -26,6 +31,18 @@ function buildBranch(overrides: Partial<BranchProps> = {}): Branch {
     lat: 0,
     lng: 0.01,
     pricePerHour: 5,
+    createdAt: new Date(),
+    ...overrides,
+  });
+}
+
+function buildUser(overrides: Partial<UserProps> = {}): User {
+  return new User({
+    id: 'user-1',
+    email: 'user@parking.com',
+    passwordHash: 'hash',
+    fullName: 'Usuario de Prueba',
+    role: Role.USER,
     createdAt: new Date(),
     ...overrides,
   });
@@ -93,6 +110,20 @@ describe('CreateReservationUseCase', () => {
     notifyExitRegistered: jest.fn(),
     notifyPaymentRegistered: jest.fn(),
   };
+  const usersRepo: jest.Mocked<UserRepositoryPort> = {
+    findById: jest.fn(),
+    findByEmail: jest.fn(),
+    create: jest.fn(),
+  };
+  const branchesRepo: jest.Mocked<BranchRepositoryPort> = {
+    findById: jest.fn(),
+    findAll: jest.fn(),
+    findByIds: jest.fn(),
+    findAllExcept: jest.fn(),
+  };
+  const notifications: jest.Mocked<NotificationPublisherPort> = {
+    publishReservationConfirmation: jest.fn(),
+  };
 
   let useCase: CreateReservationUseCase;
   const now = new Date('2026-07-22T12:00:00.000Z');
@@ -104,12 +135,17 @@ describe('CreateReservationUseCase', () => {
     reservationPolicy.calculateExpiresAt.mockReturnValue(
       new Date(now.getTime() + 15 * 60 * 1000),
     );
+    usersRepo.findById.mockResolvedValue(buildUser());
+    branchesRepo.findById.mockResolvedValue(buildBranch());
     useCase = new CreateReservationUseCase(
       reservationsRepo,
       reservationPolicy,
       slotAssignmentPolicy,
       clock,
       notifier,
+      usersRepo,
+      branchesRepo,
+      notifications,
     );
   });
 
@@ -180,7 +216,7 @@ describe('CreateReservationUseCase', () => {
       userId: 'user-1',
       branchId: 'branch-B',
       startAt: scheduledStart,
-    } as any);
+    });
 
     expect(reservationPolicy.calculateExpiresAt).toHaveBeenCalledWith(
       scheduledStart,
@@ -206,7 +242,7 @@ describe('CreateReservationUseCase', () => {
       buildReservation({ branchId: 'branch-B', slotId: slot.id, startAt: now }),
     );
 
-    await useCase.execute({ userId: 'user-1', branchId: 'branch-B' } as any);
+    await useCase.execute({ userId: 'user-1', branchId: 'branch-B' });
 
     expect(reservationsRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -215,6 +251,67 @@ describe('CreateReservationUseCase', () => {
         startAt: now,
       }),
     );
+  });
+
+  it('publica el evento de confirmacion en la cola de notificaciones al crear la reserva', async () => {
+    const slot = buildSlot({ branchId: 'branch-B' });
+    const reservation = buildReservation({
+      branchId: 'branch-B',
+      slotId: slot.id,
+    });
+    slotAssignmentPolicy.assign.mockResolvedValueOnce({
+      outcome: 'ASSIGNED',
+      slot,
+    });
+    reservationsRepo.create.mockResolvedValue(reservation);
+    usersRepo.findById.mockResolvedValue(
+      buildUser({
+        id: reservation.userId,
+        email: 'demo@parking.com',
+        fullName: 'Demo Usuario',
+      }),
+    );
+    branchesRepo.findById.mockResolvedValue(
+      buildBranch({
+        id: 'branch-B',
+        name: 'Sucursal B',
+        address: 'Av. Siempre Viva 123',
+      }),
+    );
+
+    await useCase.execute({ userId: reservation.userId, branchId: 'branch-B' });
+
+    expect(usersRepo.findById).toHaveBeenCalledWith(reservation.userId);
+    expect(branchesRepo.findById).toHaveBeenCalledWith('branch-B');
+    expect(notifications.publishReservationConfirmation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'reservation.confirmation.email',
+        reservationId: reservation.id,
+        userId: reservation.userId,
+        userEmail: 'demo@parking.com',
+        userFullName: 'Demo Usuario',
+        branchId: 'branch-B',
+        branchName: 'Sucursal B',
+        branchAddress: 'Av. Siempre Viva 123',
+        slotId: slot.id,
+      }),
+    );
+  });
+
+  it('no publica el evento de confirmacion si el usuario o la sucursal ya no existen', async () => {
+    const slot = buildSlot({ branchId: 'branch-B' });
+    reservationsRepo.create.mockResolvedValue(
+      buildReservation({ branchId: 'branch-B', slotId: slot.id }),
+    );
+    slotAssignmentPolicy.assign.mockResolvedValueOnce({
+      outcome: 'ASSIGNED',
+      slot,
+    });
+    usersRepo.findById.mockResolvedValue(null);
+
+    await useCase.execute({ userId: 'user-1', branchId: 'branch-B' });
+
+    expect(notifications.publishReservationConfirmation).not.toHaveBeenCalled();
   });
 
   it('lanza NoAvailabilityError si ninguna sucursal cercana tiene cupo', async () => {
