@@ -16,7 +16,7 @@ smart-parking-system/
 ├── backend/    # NestJS — core (domain + application) / adapters (in + out) / bootstrap
 │   └── src/bootstrap/  main.ts (API HTTP + WebSocket) · worker-main.ts (consumidor de RabbitMQ)
 ├── frontend/   # React + Vite + Tailwind + Zustand
-├── docs/       # arquitectura-hexagonal.md · demo-runbook.md
+├── docs/       # arquitectura-hexagonal.md · demo-runbook.md · anatomia-cola-reservas.md
 └── docker-compose.yml
 ```
 
@@ -70,6 +70,8 @@ cd backend
 npm test
 ```
 
-## Demo
+## Documentación
 
-Ver [`docs/demo-runbook.md`](docs/demo-runbook.md) para el checklist paso a paso de la demostración en vivo.
+- [`docs/arquitectura-hexagonal.md`](docs/arquitectura-hexagonal.md) — por qué cada pieza es un puerto `in` u `out`, y las decisiones de clasificación que no se derivan mecánicamente de la estructura.
+- [`docs/anatomia-cola-reservas.md`](docs/anatomia-cola-reservas.md) — qué hace y cómo funciona cada archivo del flujo asíncrono de reservas sobre RabbitMQ, ordenado por el camino que recorre un mensaje.
+- [`docs/demo-runbook.md`](docs/demo-runbook.md) — checklist paso a paso de la demostración en vivo.
