@@ -34,6 +34,9 @@ export class EventsGateway implements OnGatewayConnection {
     try {
       const payload = await this.tokenService.verify(token);
       client.data.user = payload;
+      // Sala propia del usuario: por ella viaja el resultado de SU solicitud
+      // de reserva cuando el worker termina de procesarla.
+      await client.join(`user:${payload.sub}`);
       if (payload.role === Role.ADMIN) {
         await client.join('admin');
       }

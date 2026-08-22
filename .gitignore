@@ -1,0 +1,2 @@
+# Config local con credenciales; usar .env.example como plantilla.
+.env

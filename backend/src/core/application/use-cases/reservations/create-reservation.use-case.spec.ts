@@ -109,6 +109,7 @@ describe('CreateReservationUseCase', () => {
     notifyEntryRegistered: jest.fn(),
     notifyExitRegistered: jest.fn(),
     notifyPaymentRegistered: jest.fn(),
+    notifyReservationRequestResolved: jest.fn(),
   };
   const usersRepo: jest.Mocked<UserRepositoryPort> = {
     findById: jest.fn(),

@@ -113,6 +113,7 @@ describe('RegisterPaymentUseCase', () => {
     notifyEntryRegistered: jest.fn(),
     notifyExitRegistered: jest.fn(),
     notifyPaymentRegistered: jest.fn(),
+    notifyReservationRequestResolved: jest.fn(),
   };
 
   let useCase: RegisterPaymentUseCase;
