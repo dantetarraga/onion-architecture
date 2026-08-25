@@ -79,6 +79,28 @@ services:
       - "3000:3000"
     command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/bootstrap/main.js"
 
+  # Servicio aislado: consume el topico de confirmacion de reservas y manda
+  # el correo. No comparte codigo ni proceso con `backend`, solo el contrato
+  # del evento (ver notifications-service/src/types.ts) y el topico de Kafka.
+  notifications-service:
+    build:
+      context: ./notifications-service
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: notifications-service
+      KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
+      KAFKA_CONSUMER_GROUP: notifications-service
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      MAIL_HOST: ${MAIL_HOST:-mail.motoya.com.pe}
+      MAIL_PORT: ${MAIL_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL:-notificaciones@motoya.com.pe}
+
   frontend:
     build:
       context: ./frontend
