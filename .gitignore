@@ -1,4 +1,5 @@
 # Variables de entorno con secretos - nunca a version control.
+# Usar .env.example como plantilla.
 .env
 .env.local
 notifications-service/.env

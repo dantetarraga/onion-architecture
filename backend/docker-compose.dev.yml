@@ -54,5 +54,22 @@ services:
     ports:
       - "8080:8080"
 
+  # http://localhost:15672 (parking/parking) - inspeccionar la cola de solicitudes
+  # de reserva y su DLQ sin escribir un consumidor.
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-parking}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-parking}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
 volumes:
   postgres-dev-data:

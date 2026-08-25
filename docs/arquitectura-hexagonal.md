@@ -51,13 +51,15 @@ backend/src/
       out/                      Interfaces que el nucleo NECESITA del exterior
         *.repository.port.ts, clock.port.ts, qr-code.port.ts, token.port.ts,
         password-hasher.port.ts, realtime-notifier.port.ts, payment-method.port.ts,
+        notification-publisher.port.ts, reservation-request-queue.port.ts,
         tokens.ts
 
   adapters/
     in/                         Algo de afuera DISPARA al nucleo
       http/                     Controllers, DTOs, guards, decorators, filtro de excepciones
+      messaging/                Consumidores de RabbitMQ (cola de solicitudes de reserva, relay de tiempo real)
       scheduler/                Cron que dispara ExpireOverdueReservationsUseCase cada minuto
-      websocket/                events.gateway.ts: autentica sockets y gestiona salas (join/leave branch)
+      websocket/                events.gateway.ts: autentica sockets y gestiona salas (join/leave branch, user:<id>)
     out/                        El nucleo PIDE algo a afuera
       persistence/prisma/       Repositorios Prisma (implementan los *.repository.port.ts)
       auth/                     JWT (TokenPort) y bcrypt (PasswordHasherPort)
@@ -65,9 +67,12 @@ backend/src/
       payments/                 Efectivo/Tarjeta/Yape/Plin (PaymentMethod, Strategy + Router)
       clock/                    Reloj del sistema (ClockPort)
       realtime/                 Empuja eventos a los sockets (RealtimeNotifierPort)
-      messaging/                Publica en Kafka (NotificationPublisherPort)
+      messaging/                Kafka (NotificationPublisherPort) y RabbitMQ
+                                (ReservationRequestQueuePort + relay de RealtimeNotifierPort)
 
-  bootstrap/                    Composition root: modulos de NestJS, wiring de DI, main.ts, app.module.ts
+  bootstrap/                    Composition root: modulos de NestJS, wiring de DI
+                                main.ts        -> proceso API (HTTP + WebSocket)
+                                worker-main.ts -> proceso worker (consume la cola de reservas)
 ```
 
 ## 3. Los 25 puertos "in": por que existen
@@ -187,28 +192,95 @@ estructura original:
    confirmacion de la reserva (mismo criterio de resiliencia que ya se
    aplicaba en `RealtimeNotifierAdapter`).
 
+7. **La cola de reservas (RabbitMQ) produce un puerto de cada lado**, y esa
+   simetria es la mejor ilustracion de la regla "la direccion la define
+   quien llama a quien":
+
+   - `ReservationRequestQueuePort` es **out**: `RequestReservationUseCase`
+     **llama** a la cola para depositar la solicitud. El nucleo no sabe que
+     hay un exchange topic ni una routing key.
+   - `ProcessReservationRequestPort` es **in**: el consumidor
+     (`adapters/in/messaging/reservation-request.consumer.ts`) **llama** al
+     nucleo cuando el broker le entrega un mensaje. Es exactamente el mismo
+     rol que el scheduler del punto 4 o que un controller HTTP: algo de
+     afuera dispara un caso de uso. Que la tecnologia sea la misma
+     (RabbitMQ) en los dos casos es irrelevante para la clasificacion.
+
+   Los dos brokers conviven porque resuelven problemas distintos, no porque
+   uno sobre: **Kafka** es el bus de eventos de salida (el correo de
+   confirmacion, que puede tener N consumidores independientes leyendo el
+   mismo topico), **RabbitMQ** es la cola de trabajo (una solicitud, un
+   worker que la procesa, ack o DLQ). Por eso el criterio de resiliencia
+   tambien es distinto: el adaptador de Kafka loguea y sigue (efecto
+   secundario), mientras que el de RabbitMQ **lanza**, y
+   `RequestReservationUseCase` lo traduce a `ReservationQueueUnavailableError`
+   (`503`). Si no se pudo encolar, la reserva no va a existir nunca, y eso el
+   usuario tiene que saberlo en la misma respuesta HTTP.
+
+8. **El mismo puerto out, dos adaptadores segun el proceso.** Este es el
+   beneficio de hexagonal que se puede *demostrar*, no solo argumentar.
+
+   `CreateReservationUseCase` ahora corre en el worker, un proceso sin
+   socket.io (el gateway vive en el API). El caso de uso inyecta
+   `REALTIME_NOTIFIER` y lo sigue llamando igual, pero el ensamblado le
+   entrega otro adaptador:
+
+   | Proceso | Modulo | Implementacion de `RealtimeNotifierPort` |
+   |---|---|---|
+   | API (`main.ts`) | `RealtimeModule` | `RealtimeNotifierAdapter` -> emite por socket.io |
+   | Worker (`worker-main.ts`) | `WorkerModule` | `RabbitRealtimeRelayAdapter` -> reenvia por un exchange fanout |
+
+   El API consume ese fanout con `RealtimeRelayConsumer` (cola exclusiva por
+   instancia) y vuelve a invocar el mismo metodo sobre el adaptador de
+   socket.io, de modo que el navegador recibe los eventos de siempre. Cambio
+   la topologia de despliegue de mono-proceso a dos procesos, y **el nucleo
+   no se entero**: cero lineas modificadas en `create-reservation.use-case.ts`.
+
 ## 5. Ejemplo de flujo completo
 
-`POST /reservations` (crear una reserva):
+`POST /reservations` (crear una reserva). Son dos mitades en dos procesos,
+unidas por la cola.
+
+**Proceso API — encolar y responder 202:**
 
 ```
 adapters/in/http/controllers/reservations.controller.ts   (adaptador driving)
-  -> @Inject(CREATE_RESERVATION) CreateReservationPort      (puerto in)
-    -> core/application/use-cases/.../create-reservation.use-case.ts (nucleo)
-      -> @Inject(RESERVATION_POLICY) ReservationPolicy       (regla interna, no es puerto)
-      -> @Inject(SLOT_ASSIGNMENT_POLICY) SlotAssignmentPolicy (regla interna, no es puerto)
-      -> @Inject(RESERVATION_REPOSITORY) ReservationRepositoryPort (puerto out)
-        -> adapters/out/persistence/prisma/repositories/prisma-reservation.repository.ts (adaptador driven)
-      -> @Inject(REALTIME_NOTIFIER) RealtimeNotifierPort      (puerto out)
-        -> adapters/out/realtime/realtime-notifier.adapter.ts  (adaptador driven)
-      -> @Inject(NOTIFICATION_PUBLISHER) NotificationPublisherPort (puerto out)
-        -> adapters/out/messaging/kafka-notification-publisher.adapter.ts (adaptador driven)
-          -> topico Kafka "notifications.email.confirmation" -> servicio externo de notificaciones -> correo
+  -> @Inject(REQUEST_RESERVATION) RequestReservationPort    (puerto in)
+    -> core/application/use-cases/.../request-reservation.use-case.ts (nucleo)
+      -> @Inject(RESERVATION_REQUEST_QUEUE) ReservationRequestQueuePort (puerto out)
+        -> adapters/out/messaging/rabbitmq-reservation-queue.adapter.ts (adaptador driven)
+          -> exchange "reservations" / rk "reservation.requested"
+      <- 202 { requestId }
+```
+
+**Proceso worker — procesar y devolver el desenlace:**
+
+```
+cola RabbitMQ "reservations.requests"
+  -> adapters/in/messaging/reservation-request.consumer.ts  (adaptador driving)
+    -> @Inject(PROCESS_RESERVATION_REQUEST) ProcessReservationRequestPort (puerto in)
+      -> core/application/use-cases/.../process-reservation-request.use-case.ts (nucleo)
+        -> @Inject(CREATE_RESERVATION) CreateReservationPort  (puerto in, reusado tal cual)
+          -> core/application/use-cases/.../create-reservation.use-case.ts (nucleo, SIN CAMBIOS)
+            -> @Inject(RESERVATION_POLICY) ReservationPolicy       (regla interna, no es puerto)
+            -> @Inject(SLOT_ASSIGNMENT_POLICY) SlotAssignmentPolicy (regla interna, no es puerto)
+            -> @Inject(RESERVATION_REPOSITORY) ReservationRepositoryPort (puerto out)
+              -> adapters/out/persistence/prisma/repositories/prisma-reservation.repository.ts
+            -> @Inject(REALTIME_NOTIFIER) RealtimeNotifierPort      (puerto out)
+              -> adapters/out/messaging/rabbit-realtime-relay.adapter.ts  (en el worker)
+                -> exchange fanout "realtime.events"
+                  -> adapters/in/messaging/realtime-relay.consumer.ts (de vuelta en el API)
+                    -> adapters/out/realtime/realtime-notifier.adapter.ts -> socket.io -> navegador
+            -> @Inject(NOTIFICATION_PUBLISHER) NotificationPublisherPort (puerto out)
+              -> adapters/out/messaging/kafka-notification-publisher.adapter.ts
+                -> topico Kafka "notifications.email.confirmation" -> servicio externo -> correo
+        -> ack (procesada o rechazada por negocio) / nack -> DLQ (fallo de infraestructura)
 ```
 
 Ni una linea de `create-reservation.use-case.ts` sabe que existe Express,
-Prisma, Socket.IO o Kafka. Eso es lo que hexagonal (y onion) buscan
-garantizar; lo unico que cambio es como se nombran y agrupan las carpetas.
+Prisma, Socket.IO, Kafka o RabbitMQ — ni siquiera sabe que ahora corre en
+otro proceso, disparado por un mensaje en vez de por un request HTTP. Eso es
+lo que hexagonal (y onion) buscan garantizar.
 
 ## 6. Que se mantuvo igual
 

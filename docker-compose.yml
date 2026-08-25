@@ -56,6 +56,24 @@ services:
     ports:
       - "8080:8080"
 
+  # UI web para inspeccionar la cola de solicitudes de reserva durante la demo
+  # (http://localhost:15672, usuario/clave parking/parking). Ahi se ve el mensaje
+  # que publica POST /reservations, su DLQ y las tasas de deliver/ack del worker.
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-parking}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-parking}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -64,6 +82,8 @@ services:
       postgres:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
@@ -75,9 +95,38 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}
       KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
     ports:
       - "3000:3000"
     command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/bootstrap/main.js"
+
+  # Worker de reservas: mismo build que `backend`, pero en vez de servir HTTP
+  # consume la cola `reservations.requests` y ejecuta CreateReservationUseCase.
+  # Se puede apagar (`docker compose stop reservations-worker`) para ver las
+  # solicitudes acumularse en RabbitMQ, y escalar (`--scale reservations-worker=3`)
+  # para demostrar competing consumers.
+  reservations-worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
+      RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
+      SLOT_ASSIGNMENT_STRATEGY: ${SLOT_ASSIGNMENT_STRATEGY:-default}
+      JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret-key-min-32-chars}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}-worker
+      KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-1}
+    command: node dist/src/bootstrap/worker-main.js
 
   # Servicio aislado: consume el topico de confirmacion de reservas y manda
   # el correo. No comparte codigo ni proceso con `backend`, solo el contrato

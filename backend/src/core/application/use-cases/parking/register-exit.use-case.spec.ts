@@ -97,6 +97,7 @@ describe('RegisterExitUseCase', () => {
     notifyEntryRegistered: jest.fn(),
     notifyExitRegistered: jest.fn(),
     notifyPaymentRegistered: jest.fn(),
+    notifyReservationRequestResolved: jest.fn(),
   };
   const sessionsRepo: jest.Mocked<ParkingSessionRepositoryPort> = {
     findById: jest.fn(),

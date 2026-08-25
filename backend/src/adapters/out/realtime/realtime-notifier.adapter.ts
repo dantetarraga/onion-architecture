@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { RealtimeNotifierPort } from '../../../core/ports/out/realtime-notifier.port';
+import type {
+  RealtimeNotifierPort,
+  ReservationRequestResolvedPayload,
+} from '../../../core/ports/out/realtime-notifier.port';
 import { computeOccupancyLevel } from '../../../core/application/shared/occupancy-level';
 import { SlotStatus } from '../../../core/domain/enums/slot-status.enum';
 import type { ParkingSlotRepositoryPort } from '../../../core/ports/out/parking-slot.repository.port';
@@ -49,6 +52,13 @@ export class RealtimeNotifierAdapter implements RealtimeNotifierPort {
 
   notifyPaymentRegistered(payload: { paymentId: string; sessionId: string; amount: number; status: string }): void {
     this.gateway.server.to('admin').emit('payment.registered', payload);
+  }
+
+  notifyReservationRequestResolved(payload: ReservationRequestResolvedPayload): void {
+    // Va dirigido al navegador que envio la solicitud, no a la sucursal:
+    // solo ese usuario espera este `requestId`.
+    this.gateway.server.to(`user:${payload.userId}`).emit('reservation.request.resolved', payload);
+    this.gateway.server.to('admin').emit('reservation.request.resolved', payload);
   }
 
   private emitToBranch(branchId: string, event: string, payload: unknown): void {
