@@ -87,20 +87,32 @@ export interface AuthUser {
   role: Role;
 }
 
-export interface CreateReservationCreated {
-  outcome: "CREATED";
-  reservation: Reservation;
+/**
+ * Respuesta de POST /reservations: la solicitud entra a la cola de RabbitMQ
+ * y el backend responde 202 de inmediato. El desenlace llega despues por
+ * WebSocket en `reservation.request.resolved`, correlacionado por requestId.
+ */
+export interface ReservationRequestAccepted {
+  requestId: string;
+  status: "QUEUED";
 }
 
-export interface CreateReservationSuggest {
-  outcome: "SUGGEST_OTHER_BRANCH";
-  suggestedBranch: Branch;
-  distanceKm: number;
+export interface ReservationRequestResolved {
+  requestId: string;
+  userId: string;
+  status: "CREATED" | "SUGGEST_OTHER_BRANCH" | "REJECTED";
+  reservation?: {
+    id: string;
+    branchId: string;
+    slotId: string;
+    startAt: string;
+    expiresAt: string;
+  };
+  suggestedBranch?: { id: string; name: string; address: string };
+  distanceKm?: number;
+  code?: string;
+  message?: string;
 }
-
-export type CreateReservationResult =
-  | CreateReservationCreated
-  | CreateReservationSuggest;
 
 export interface RevenueReportRow {
   branch: Branch;

@@ -1,0 +1,21 @@
+import { Reservation as PrismaReservation } from '@prisma/client';
+import { Reservation } from '../../../../../core/domain/entities/reservation.entity';
+import { ReservationStatus } from '../../../../../core/domain/enums/reservation-status.enum';
+import { SlotType } from '../../../../../core/domain/enums/slot-type.enum';
+
+export class ReservationMapper {
+  static toDomain(record: PrismaReservation): Reservation {
+    return new Reservation({
+      id: record.id,
+      userId: record.userId,
+      branchId: record.branchId,
+      slotId: record.slotId,
+      requestedType: record.requestedType as unknown as SlotType,
+      status: record.status as unknown as ReservationStatus,
+      createdAt: record.createdAt,
+      startAt: record.startAt,
+      expiresAt: record.expiresAt,
+      confirmedAt: record.confirmedAt,
+    });
+  }
+}

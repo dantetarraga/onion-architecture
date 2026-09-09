@@ -1,0 +1,24 @@
+{
+  "name": "notifications-service",
+  "version": "0.1.0",
+  "description": "Servicio aislado que consume el topico de Kafka de confirmaciones de reserva y envia el correo al usuario. No comparte codigo ni proceso con el backend: solo comparte el contrato del evento (ver src/types.ts).",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "start:dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4",
+    "nodemailer": "^6.9.15",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^6.4.16",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
