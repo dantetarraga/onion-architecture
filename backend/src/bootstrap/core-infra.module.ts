@@ -1,7 +1,8 @@
 import { Global, Module } from '@nestjs/common';
-import { CLOCK, PASSWORD_HASHER, QR_CODE, TOKEN_SERVICE } from '../core/ports/out/tokens';
+import { CLOCK, GOOGLE_TOKEN_VERIFIER, PASSWORD_HASHER, QR_CODE, TOKEN_SERVICE } from '../core/ports/out/tokens';
 import { PAYMENT_METHOD } from '../core/ports/out/tokens';
 import { BcryptPasswordHasherAdapter } from '../adapters/out/auth/bcrypt-password-hasher.adapter';
+import { FirebaseGoogleTokenAdapter } from '../adapters/out/auth/firebase-google-token.adapter';
 import { JwtTokenAdapter } from '../adapters/out/auth/jwt-token.adapter';
 import { SystemClockAdapter } from '../adapters/out/clock/system-clock.adapter';
 import { CardPaymentAdapter } from '../adapters/out/payments/card-payment.adapter';
@@ -18,12 +19,13 @@ import { HmacQrCodeAdapter } from '../adapters/out/qr/hmac-qrcode.adapter';
     { provide: QR_CODE, useClass: HmacQrCodeAdapter },
     { provide: TOKEN_SERVICE, useClass: JwtTokenAdapter },
     { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasherAdapter },
+    { provide: GOOGLE_TOKEN_VERIFIER, useClass: FirebaseGoogleTokenAdapter },
     CashPaymentAdapter,
     CardPaymentAdapter,
     YapePaymentAdapter,
     PlinPaymentAdapter,
     { provide: PAYMENT_METHOD, useClass: PaymentMethodRouterAdapter },
   ],
-  exports: [CLOCK, QR_CODE, TOKEN_SERVICE, PASSWORD_HASHER, PAYMENT_METHOD],
+  exports: [CLOCK, QR_CODE, TOKEN_SERVICE, PASSWORD_HASHER, GOOGLE_TOKEN_VERIFIER, PAYMENT_METHOD],
 })
 export class CoreInfraModule {}

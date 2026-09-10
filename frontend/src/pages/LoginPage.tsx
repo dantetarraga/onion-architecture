@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/components/layout/AuthLayout';
+import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { authApi } from '@/api/auth.api';
@@ -65,6 +66,14 @@ export function LoginPage() {
           Ingresar
         </Button>
       </form>
+
+      <div className="my-5 flex items-center gap-3">
+        <span className="h-px flex-1 bg-steel-100" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-steel-300">o</span>
+        <span className="h-px flex-1 bg-steel-100" />
+      </div>
+
+      <GoogleAuthButton />
     </AuthLayout>
   );
 }

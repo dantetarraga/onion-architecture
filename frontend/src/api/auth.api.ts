@@ -20,4 +20,7 @@ export interface LoginResult {
 export const authApi = {
   login: (input: LoginInput) => api.post<LoginResult>('/auth/login', input).then((r) => r.data),
   register: (input: RegisterInput) => api.post<AuthUser>('/auth/register', input).then((r) => r.data),
+  /** Login/registro con Google: idToken emitido por Firebase Authentication en el cliente. */
+  loginWithGoogle: (idToken: string) =>
+    api.post<LoginResult>('/auth/google', { idToken }).then((r) => r.data),
 };

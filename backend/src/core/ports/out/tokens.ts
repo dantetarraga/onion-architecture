@@ -5,6 +5,7 @@ export const CLOCK = Symbol('CLOCK');
 export const QR_CODE = Symbol('QR_CODE');
 export const TOKEN_SERVICE = Symbol('TOKEN_SERVICE');
 export const PASSWORD_HASHER = Symbol('PASSWORD_HASHER');
+export const GOOGLE_TOKEN_VERIFIER = Symbol('GOOGLE_TOKEN_VERIFIER');
 
 export const USER_REPOSITORY = Symbol('USER_REPOSITORY');
 export const BRANCH_REPOSITORY = Symbol('BRANCH_REPOSITORY');
