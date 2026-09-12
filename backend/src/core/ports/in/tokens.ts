@@ -1,6 +1,7 @@
 export const REGISTER_USER = Symbol('REGISTER_USER');
 export const LOGIN_USER = Symbol('LOGIN_USER');
 export const LOGIN_WITH_GOOGLE = Symbol('LOGIN_WITH_GOOGLE');
+export const LOGIN_WITH_FACEBOOK = Symbol('LOGIN_WITH_FACEBOOK');
 
 export const GET_OCCUPANCY_DASHBOARD = Symbol('GET_OCCUPANCY_DASHBOARD');
 export const GET_REVENUE_REPORT = Symbol('GET_REVENUE_REPORT');

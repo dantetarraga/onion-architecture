@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/components/layout/AuthLayout';
+import { FacebookAuthButton } from '@/components/auth/FacebookAuthButton';
 import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -73,7 +74,10 @@ export function LoginPage() {
         <span className="h-px flex-1 bg-steel-100" />
       </div>
 
-      <GoogleAuthButton />
+      <div className="flex flex-col gap-3">
+        <GoogleAuthButton />
+        <FacebookAuthButton />
+      </div>
     </AuthLayout>
   );
 }

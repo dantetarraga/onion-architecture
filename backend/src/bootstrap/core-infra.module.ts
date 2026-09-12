@@ -1,7 +1,6 @@
 import { Global, Module } from '@nestjs/common';
-import { CLOCK, GOOGLE_TOKEN_VERIFIER, PASSWORD_HASHER, QR_CODE, TOKEN_SERVICE } from '../core/ports/out/tokens';
-import { PAYMENT_METHOD } from '../core/ports/out/tokens';
 import { BcryptPasswordHasherAdapter } from '../adapters/out/auth/bcrypt-password-hasher.adapter';
+import { FacebookGraphTokenAdapter } from '../adapters/out/auth/facebook-graph-token.adapter';
 import { FirebaseGoogleTokenAdapter } from '../adapters/out/auth/firebase-google-token.adapter';
 import { JwtTokenAdapter } from '../adapters/out/auth/jwt-token.adapter';
 import { SystemClockAdapter } from '../adapters/out/clock/system-clock.adapter';
@@ -11,6 +10,15 @@ import { PaymentMethodRouterAdapter } from '../adapters/out/payments/payment-met
 import { PlinPaymentAdapter } from '../adapters/out/payments/plin-payment.adapter';
 import { YapePaymentAdapter } from '../adapters/out/payments/yape-payment.adapter';
 import { HmacQrCodeAdapter } from '../adapters/out/qr/hmac-qrcode.adapter';
+import {
+  CLOCK,
+  FACEBOOK_TOKEN_VERIFIER,
+  GOOGLE_TOKEN_VERIFIER,
+  PASSWORD_HASHER,
+  PAYMENT_METHOD,
+  QR_CODE,
+  TOKEN_SERVICE,
+} from '../core/ports/out/tokens';
 
 @Global()
 @Module({
@@ -20,12 +28,21 @@ import { HmacQrCodeAdapter } from '../adapters/out/qr/hmac-qrcode.adapter';
     { provide: TOKEN_SERVICE, useClass: JwtTokenAdapter },
     { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasherAdapter },
     { provide: GOOGLE_TOKEN_VERIFIER, useClass: FirebaseGoogleTokenAdapter },
+    { provide: FACEBOOK_TOKEN_VERIFIER, useClass: FacebookGraphTokenAdapter },
     CashPaymentAdapter,
     CardPaymentAdapter,
     YapePaymentAdapter,
     PlinPaymentAdapter,
     { provide: PAYMENT_METHOD, useClass: PaymentMethodRouterAdapter },
   ],
-  exports: [CLOCK, QR_CODE, TOKEN_SERVICE, PASSWORD_HASHER, GOOGLE_TOKEN_VERIFIER, PAYMENT_METHOD],
+  exports: [
+    CLOCK,
+    QR_CODE,
+    TOKEN_SERVICE,
+    PASSWORD_HASHER,
+    GOOGLE_TOKEN_VERIFIER,
+    FACEBOOK_TOKEN_VERIFIER,
+    PAYMENT_METHOD,
+  ],
 })
 export class CoreInfraModule {}

@@ -23,4 +23,6 @@ export const authApi = {
   /** Login/registro con Google: idToken emitido por Firebase Authentication en el cliente. */
   loginWithGoogle: (idToken: string) =>
     api.post<LoginResult>('/auth/google', { idToken }).then((r) => r.data),
+  loginWithFacebook: (accessToken: string) =>
+    api.post<LoginResult>('/auth/facebook', { accessToken }).then((r) => r.data),
 };
