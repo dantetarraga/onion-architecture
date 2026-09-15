@@ -6,15 +6,13 @@ import type { PasswordHasherPort } from '../../../ports/out/password-hasher.port
 import type { TokenPort } from '../../../ports/out/token.port';
 import { PASSWORD_HASHER, TOKEN_SERVICE } from '../../../ports/out/tokens';
 import type { LoginUserPort } from '../../../ports/in/auth/login-user.port';
+import { issueSession, type LoginUserResult } from './issue-session';
+
+export type { LoginUserResult } from './issue-session';
 
 export interface LoginUserInput {
   email: string;
   password: string;
-}
-
-export interface LoginUserResult {
-  accessToken: string;
-  user: { id: string; email: string; fullName: string; role: string };
 }
 
 @Injectable()
@@ -40,20 +38,6 @@ export class LoginUserUseCase implements LoginUserPort {
       throw new InvalidCredentialsError();
     }
 
-    const accessToken = await this.tokenService.sign({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    return {
-      accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-      },
-    };
+    return issueSession(this.tokenService, user);
   }
 }

@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { User } from '../../../../../core/domain/entities/user.entity';
-import { CreateUserData, UserRepositoryPort } from '../../../../../core/ports/out/user.repository.port';
+import {
+  CreateUserData,
+  MfaCredentials,
+  MfaCredentialsPatch,
+  UserRepositoryPort,
+} from '../../../../../core/ports/out/user.repository.port';
 import { UserMapper } from '../mappers/user.mapper';
 import { PrismaService } from '../prisma.service';
 
@@ -28,5 +33,40 @@ export class PrismaUserRepository implements UserRepositoryPort {
       },
     });
     return UserMapper.toDomain(record);
+  }
+
+  async findMfaCredentials(userId: string): Promise<MfaCredentials | null> {
+    const record = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        mfaEnabled: true,
+        totpSecretEnc: true,
+        totpLastStep: true,
+        mfaBackupCodes: true,
+      },
+    });
+    if (!record) return null;
+    return {
+      enabled: record.mfaEnabled,
+      totpSecretEnc: record.totpSecretEnc,
+      lastStep: record.totpLastStep,
+      backupCodeHashes: record.mfaBackupCodes,
+    };
+  }
+
+  async updateMfa(userId: string, patch: MfaCredentialsPatch): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(patch.enabled !== undefined && { mfaEnabled: patch.enabled }),
+        ...(patch.totpSecretEnc !== undefined && {
+          totpSecretEnc: patch.totpSecretEnc,
+        }),
+        ...(patch.lastStep !== undefined && { totpLastStep: patch.lastStep }),
+        ...(patch.backupCodeHashes !== undefined && {
+          mfaBackupCodes: patch.backupCodeHashes,
+        }),
+      },
+    });
   }
 }

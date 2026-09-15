@@ -43,6 +43,7 @@ function buildUser(overrides: Partial<UserProps> = {}): User {
     passwordHash: 'hash',
     fullName: 'Usuario de Prueba',
     role: Role.USER,
+    mfaEnabled: false,
     createdAt: new Date(),
     ...overrides,
   });
@@ -115,6 +116,8 @@ describe('CreateReservationUseCase', () => {
     findById: jest.fn(),
     findByEmail: jest.fn(),
     create: jest.fn(),
+    findMfaCredentials: jest.fn(),
+    updateMfa: jest.fn(),
   };
   const branchesRepo: jest.Mocked<BranchRepositoryPort> = {
     findById: jest.fn(),

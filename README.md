@@ -76,4 +76,5 @@ npm test
 - [`docs/anatomia-cola-reservas.md`](docs/anatomia-cola-reservas.md) — qué hace y cómo funciona cada archivo del flujo asíncrono de reservas sobre RabbitMQ, ordenado por el camino que recorre un mensaje.
 - [`docs/login-google-firebase.md`](docs/login-google-firebase.md) — cómo se implementó el login con Google: verificación del ID token con `jose` + JWKS (sin `firebase-admin`), vinculación por email y config de Firebase.
 - [`docs/login-facebook.md`](docs/login-facebook.md) — cómo se implementó el login con Facebook sin Firebase: verificación del access token contra la Graph API (`/debug_token` + `/me`), por qué aquí sí hay un secreto y cómo configurar la app de Facebook.
+- [`docs/mfa-totp.md`](docs/mfa-totp.md) — verificación en dos pasos con Google Authenticator (TOTP, RFC 6238) sin ninguna cuenta ni credencial externa: cómo se engancha a los tres logins, secreto cifrado, anti-replay, backup codes y rate limit.
 - [`docs/demo-runbook.md`](docs/demo-runbook.md) — checklist paso a paso de la demostración en vivo.

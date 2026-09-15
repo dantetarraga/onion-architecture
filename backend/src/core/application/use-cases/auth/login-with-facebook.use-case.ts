@@ -12,7 +12,7 @@ import {
   USER_REPOSITORY,
 } from '../../../ports/out/tokens';
 import type { UserRepositoryPort } from '../../../ports/out/user.repository.port';
-import type { LoginUserResult } from './login-user.use-case';
+import { issueSession, type LoginUserResult } from './issue-session';
 
 export interface LoginWithFacebookInput {
   accessToken: string;
@@ -43,20 +43,6 @@ export class LoginWithFacebookUseCase implements LoginWithFacebookPort {
       });
     }
 
-    const accessToken = await this.tokenService.sign({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    return {
-      accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-      },
-    };
+    return issueSession(this.tokenService, user);
   }
 }

@@ -1,25 +1,19 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { authApi } from '@/api/auth.api';
 import { signInWithFacebook } from '@/lib/facebook';
 import { notifyError } from '@/lib/notify';
-import { useAuthStore } from '@/store/auth.store';
+import { useLoginResult } from '@/hooks/useLoginResult';
 
 export function FacebookAuthButton() {
   const [loading, setLoading] = useState(false);
-  const setAuth = useAuthStore((state) => state.setAuth);
-  const navigate = useNavigate();
-  const location = useLocation();
+  const handleLoginResult = useLoginResult();
 
   async function handleClick() {
     setLoading(true);
     try {
       const accessToken = await signInWithFacebook();
-      const result = await authApi.loginWithFacebook(accessToken);
-      setAuth(result.accessToken, result.user);
-      const from = (location.state as { from?: string } | null)?.from ?? '/sucursales';
-      navigate(from, { replace: true });
+      handleLoginResult(await authApi.loginWithFacebook(accessToken));
     } catch (error) {
       notifyError(error);
     } finally {

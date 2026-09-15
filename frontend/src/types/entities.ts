@@ -85,6 +85,8 @@ export interface AuthUser {
   email: string;
   fullName: string;
   role: Role;
+  /** Verificacion en dos pasos (TOTP) activa. Lo devuelve GET /users/me; el login no lo incluye. */
+  mfaEnabled?: boolean;
 }
 
 /**

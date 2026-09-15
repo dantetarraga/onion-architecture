@@ -13,7 +13,7 @@ import {
   USER_REPOSITORY,
 } from '../../../ports/out/tokens';
 import type { LoginWithGooglePort } from '../../../ports/in/auth/login-with-google.port';
-import type { LoginUserResult } from './login-user.use-case';
+import { issueSession, type LoginUserResult } from './issue-session';
 
 export interface LoginWithGoogleInput {
   idToken: string;
@@ -46,7 +46,9 @@ export class LoginWithGoogleUseCase implements LoginWithGooglePort {
   async execute(input: LoginWithGoogleInput): Promise<LoginUserResult> {
     const identity = await this.googleVerifier.verify(input.idToken);
     if (!identity.emailVerified) {
-      throw new InvalidCredentialsError('El correo de Google no esta verificado.');
+      throw new InvalidCredentialsError(
+        'El correo de Google no esta verificado.',
+      );
     }
 
     let user = await this.users.findByEmail(identity.email);
@@ -60,20 +62,6 @@ export class LoginWithGoogleUseCase implements LoginWithGooglePort {
       });
     }
 
-    const accessToken = await this.tokenService.sign({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    return {
-      accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-      },
-    };
+    return issueSession(this.tokenService, user);
   }
 }

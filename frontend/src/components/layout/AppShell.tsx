@@ -37,6 +37,9 @@ export function AppShell() {
               <NavLink to="/mi-reserva" className={NAV_LINK_CLASS}>
                 Mi reserva
               </NavLink>
+              <NavLink to="/seguridad" className={NAV_LINK_CLASS}>
+                Seguridad
+              </NavLink>
               {user?.role === 'ADMIN' && (
                 <NavLink to="/admin" className={NAV_LINK_CLASS}>
                   Administración

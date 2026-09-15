@@ -10,6 +10,7 @@ export class UserMapper {
       passwordHash: record.passwordHash,
       fullName: record.fullName,
       role: record.role as unknown as Role,
+      mfaEnabled: record.mfaEnabled,
       createdAt: record.createdAt,
     });
   }

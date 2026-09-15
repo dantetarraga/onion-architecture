@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { signInWithPopup } from 'firebase/auth';
 import { Button } from '@/components/ui/Button';
 import { authApi } from '@/api/auth.api';
 import { firebaseAuth, googleAuthProvider } from '@/lib/firebase';
 import { notifyError } from '@/lib/notify';
-import { useAuthStore } from '@/store/auth.store';
+import { useLoginResult } from '@/hooks/useLoginResult';
 
 /**
  * Boton "Continuar con Google": abre el popup de Firebase Authentication,
@@ -16,19 +15,14 @@ import { useAuthStore } from '@/store/auth.store';
  */
 export function GoogleAuthButton() {
   const [loading, setLoading] = useState(false);
-  const setAuth = useAuthStore((state) => state.setAuth);
-  const navigate = useNavigate();
-  const location = useLocation();
+  const handleLoginResult = useLoginResult();
 
   async function handleClick() {
     setLoading(true);
     try {
       const credential = await signInWithPopup(firebaseAuth, googleAuthProvider);
       const idToken = await credential.user.getIdToken();
-      const result = await authApi.loginWithGoogle(idToken);
-      setAuth(result.accessToken, result.user);
-      const from = (location.state as { from?: string } | null)?.from ?? '/sucursales';
-      navigate(from, { replace: true });
+      handleLoginResult(await authApi.loginWithGoogle(idToken));
     } catch (error) {
       notifyError(error);
     } finally {

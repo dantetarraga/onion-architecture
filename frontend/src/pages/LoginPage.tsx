@@ -1,31 +1,26 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { AuthLayout } from '@/components/layout/AuthLayout';
 import { FacebookAuthButton } from '@/components/auth/FacebookAuthButton';
 import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { authApi } from '@/api/auth.api';
-import { useAuthStore } from '@/store/auth.store';
+import { useLoginResult } from '@/hooks/useLoginResult';
 import { notifyError } from '@/lib/notify';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const setAuth = useAuthStore((state) => state.setAuth);
-  const navigate = useNavigate();
-  const location = useLocation();
+  const handleLoginResult = useLoginResult();
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
     try {
-      const result = await authApi.login({ email, password });
-      setAuth(result.accessToken, result.user);
-      const from = (location.state as { from?: string } | null)?.from ?? '/sucursales';
-      navigate(from, { replace: true });
+      handleLoginResult(await authApi.login({ email, password }));
     } catch (error) {
       notifyError(error);
     } finally {

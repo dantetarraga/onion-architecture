@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { CoreInfraModule } from './core-infra.module';
 import { PoliciesModule } from './policies.module';
 import { RepositoriesModule } from './repositories.module';
@@ -20,6 +21,8 @@ import { AppService } from './app.service';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Solo aplica donde se usa ThrottlerGuard explicitamente (endpoints MFA); el resto de la API no se limita.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 5 }]),
     PrismaModule,
     RepositoriesModule,
     PoliciesModule,
