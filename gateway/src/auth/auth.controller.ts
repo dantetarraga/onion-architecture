@@ -11,7 +11,7 @@ import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthTokenPayload } from '../common/auth-token-payload';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
-import { AuthGrpcClient } from './auth-grpc.client';
+import { AuthGrpcClient, toLoginResult } from './auth-grpc.client';
 import { FacebookLoginDto } from './dto/facebook-login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { LoginDto } from './dto/login.dto';
@@ -34,25 +34,29 @@ export class AuthController {
   }
 
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return callAuthRpc(this.authGrpc.auth.login(dto));
+  async login(@Body() dto: LoginDto) {
+    return toLoginResult(await callAuthRpc(this.authGrpc.auth.login(dto)));
   }
 
   @Post('google')
-  loginWithGoogleProvider(@Body() dto: GoogleLoginDto) {
-    return callAuthRpc(this.authGrpc.auth.loginWithGoogle(dto));
+  async loginWithGoogleProvider(@Body() dto: GoogleLoginDto) {
+    return toLoginResult(
+      await callAuthRpc(this.authGrpc.auth.loginWithGoogle(dto)),
+    );
   }
 
   @Post('facebook')
-  loginWithFacebookProvider(@Body() dto: FacebookLoginDto) {
-    return callAuthRpc(this.authGrpc.auth.loginWithFacebook(dto));
+  async loginWithFacebookProvider(@Body() dto: FacebookLoginDto) {
+    return toLoginResult(
+      await callAuthRpc(this.authGrpc.auth.loginWithFacebook(dto)),
+    );
   }
 
   @Post('mfa/verify')
   @UseGuards(ThrottlerGuard)
   @Throttle(MFA_THROTTLE)
-  verifyMfaCode(@Body() dto: MfaVerifyDto) {
-    return callAuthRpc(this.authGrpc.auth.verifyMfa(dto));
+  async verifyMfaCode(@Body() dto: MfaVerifyDto) {
+    return toLoginResult(await callAuthRpc(this.authGrpc.auth.verifyMfa(dto)));
   }
 
   @Post('mfa/setup')

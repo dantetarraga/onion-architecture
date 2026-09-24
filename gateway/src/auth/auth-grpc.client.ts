@@ -17,6 +17,31 @@ export interface LoginReply {
   fullSession?: { accessToken: string; user: AuthenticatedUserSummary };
   mfaChallenge?: { mfaToken: string };
 }
+
+/** Shape original de LoginUserResult (backend/core/application/use-cases/auth/issue-session.ts). */
+export type LoginUserResult =
+  | { mfaRequired: false; accessToken: string; user: AuthenticatedUserSummary }
+  | { mfaRequired: true; mfaToken: string };
+
+/**
+ * El proto modela la union con `oneof` (fullSession/mfaChallenge) porque asi
+ * es como gRPC expresa "uno de estos dos", pero el frontend nunca vio ese
+ * shape: siempre recibio {mfaRequired, ...} plano. Aplanar aqui evita tocar
+ * el frontend, que es el objetivo de todo el gateway.
+ */
+export function toLoginResult(reply: LoginReply): LoginUserResult {
+  if (reply.fullSession) {
+    return {
+      mfaRequired: false,
+      accessToken: reply.fullSession.accessToken,
+      user: reply.fullSession.user,
+    };
+  }
+  if (reply.mfaChallenge) {
+    return { mfaRequired: true, mfaToken: reply.mfaChallenge.mfaToken };
+  }
+  throw new Error('LoginReply de auth-service sin fullSession ni mfaChallenge.');
+}
 export interface SetupMfaReply {
   secret: string;
   otpauthUri: string;

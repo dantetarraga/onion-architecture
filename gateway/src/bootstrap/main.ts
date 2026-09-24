@@ -19,10 +19,11 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
 
-  // Fallback: cualquier ruta que Nest no matcheo (todo lo que no es /auth/* o
-  // GET /users/me) sigue de largo hacia backend. Debe registrarse DESPUES de
-  // que Nest arma su router interno para que las rutas propias del gateway
-  // (auth/users) sigan teniendo prioridad.
+  // Fallback: cualquier ruta que no sea propia del gateway (todo lo que no es
+  // /auth/* o GET /users/me) se reenvia a backend ANTES de llegar al router
+  // de Nest (ver el filtro por path dentro de createBackendProxy: el router
+  // de Nest no hace fallthrough en un 404 real, asi que la decision no puede
+  // depender del orden de registro en Express).
   const proxy = createBackendProxy();
   app.use(proxy);
 
