@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AuthGrpcModule } from './auth-grpc.module';
 import { CoreInfraModule } from './core-infra.module';
 import { MessagingModule } from './messaging.module';
 import { PoliciesModule } from './policies.module';
@@ -39,6 +40,7 @@ class WorkerRealtimeModule {}
     RepositoriesModule,
     PoliciesModule,
     CoreInfraModule,
+    AuthGrpcModule,
     WorkerRealtimeModule,
     MessagingModule,
     ReservationsModule,

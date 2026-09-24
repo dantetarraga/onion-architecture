@@ -6,14 +6,14 @@ export interface AuthTokenPayload {
   role: Role;
 }
 
-export interface TokenPort {
-  sign(payload: AuthTokenPayload): Promise<string>;
-  /** Verifica un access token. Debe rechazar tokens de desafio MFA aunque esten bien firmados. */
+/**
+ * Subconjunto de solo-verificacion del TokenPort que hoy vive en auth-service
+ * (dueño de la clave privada RS256 y de sign()/signMfaChallenge()). backend
+ * solo necesita comprobar la firma con la clave publica: defensa en
+ * profundidad, ya que gateway ya valido el mismo token antes de reenviar la
+ * request. RolesGuard/@CurrentUser()/todos los controladores de negocio no
+ * cambian: siguen viendo el mismo AuthTokenPayload de siempre.
+ */
+export interface PublicKeyVerifierPort {
   verify(token: string): Promise<AuthTokenPayload>;
-  /**
-   * Token intermedio de corta vida que prueba "ya paso el primer factor"
-   * (password / proveedor social) y solo sirve para POST /auth/mfa/verify.
-   */
-  signMfaChallenge(userId: string): Promise<string>;
-  verifyMfaChallenge(token: string): Promise<{ sub: string }>;
 }

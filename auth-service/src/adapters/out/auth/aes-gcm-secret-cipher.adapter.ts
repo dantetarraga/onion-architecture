@@ -12,11 +12,10 @@ import { SecretCipherPort } from '../../../core/ports/out/secret-cipher.port';
  * AES-256-GCM con IV aleatorio por valor. Formato guardado: `iv.cipher.tag`
  * en base64, autocontenido para poder rotar el algoritmo mas adelante.
  *
- * La clave se deriva con SHA-256 de MFA_ENCRYPTION_KEY (o, si falta, de
- * JWT_SECRET) para aceptar cualquier string y obtener siempre 32 bytes. En
- * produccion conviene una clave propia (`openssl rand -base64 32`): si se
- * cambia, los secretos ya guardados dejan de poder descifrarse y los usuarios
- * tendran que volver a configurar la app.
+ * La clave se deriva con SHA-256 de MFA_ENCRYPTION_KEY para aceptar cualquier
+ * string y obtener siempre 32 bytes. En produccion conviene una clave propia
+ * (`openssl rand -base64 32`): si se cambia, los secretos ya guardados dejan
+ * de poder descifrarse y los usuarios tendran que volver a configurar la app.
  */
 const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12;
@@ -26,10 +25,7 @@ export class AesGcmSecretCipherAdapter implements SecretCipherPort {
   private readonly key: Buffer;
 
   constructor(config: ConfigService) {
-    const material =
-      config.get<string>('MFA_ENCRYPTION_KEY') ??
-      config.get<string>('JWT_SECRET') ??
-      'dev-secret';
+    const material = config.get<string>('MFA_ENCRYPTION_KEY') ?? 'dev-secret';
     this.key = createHash('sha256').update(material).digest();
   }
 

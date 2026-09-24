@@ -1,11 +1,11 @@
 import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
-import type { AuthTokenPayload, TokenPort } from '../../../../core/ports/out/token.port';
-import { TOKEN_SERVICE } from '../../../../core/ports/out/tokens';
+import type { AuthTokenPayload, PublicKeyVerifierPort } from '../../../../core/ports/out/token.port';
+import { PUBLIC_KEY_VERIFIER } from '../../../../core/ports/out/tokens';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(@Inject(TOKEN_SERVICE) private readonly tokenService: TokenPort) {}
+  constructor(@Inject(PUBLIC_KEY_VERIFIER) private readonly tokenService: PublicKeyVerifierPort) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request & { user?: AuthTokenPayload }>();

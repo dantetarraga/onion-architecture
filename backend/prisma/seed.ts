@@ -1,6 +1,5 @@
 import 'dotenv/config';
-import { PrismaClient, Role, SlotType } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import { PrismaClient, SlotType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -63,28 +62,8 @@ async function main() {
   await prisma.reservation.deleteMany();
   await prisma.parkingSlot.deleteMany();
   await prisma.branch.deleteMany();
-  await prisma.user.deleteMany();
-
-  const adminPasswordHash = await bcrypt.hash('Admin123!', 10);
-  const userPasswordHash = await bcrypt.hash('User123!', 10);
-
-  await prisma.user.create({
-    data: {
-      email: 'admin@parking.com',
-      passwordHash: adminPasswordHash,
-      fullName: 'Administrador General',
-      role: Role.ADMIN,
-    },
-  });
-
-  await prisma.user.create({
-    data: {
-      email: 'user@parking.com',
-      passwordHash: userPasswordHash,
-      fullName: 'Usuario Demo',
-      role: Role.USER,
-    },
-  });
+  // Los usuarios (admin@parking.com / user@parking.com) ahora se siembran en
+  // auth-service/prisma/seed.ts: User vive en su propia base de datos.
 
   for (const branchSeed of branches) {
     const branch = await prisma.branch.create({

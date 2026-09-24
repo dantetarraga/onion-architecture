@@ -3,14 +3,10 @@ export const NOTIFICATION_PUBLISHER = Symbol('NOTIFICATION_PUBLISHER');
 export const RESERVATION_REQUEST_QUEUE = Symbol('RESERVATION_REQUEST_QUEUE');
 export const CLOCK = Symbol('CLOCK');
 export const QR_CODE = Symbol('QR_CODE');
-export const TOKEN_SERVICE = Symbol('TOKEN_SERVICE');
-export const PASSWORD_HASHER = Symbol('PASSWORD_HASHER');
-export const GOOGLE_TOKEN_VERIFIER = Symbol('GOOGLE_TOKEN_VERIFIER');
-export const FACEBOOK_TOKEN_VERIFIER = Symbol('FACEBOOK_TOKEN_VERIFIER');
-export const TOTP = Symbol('TOTP');
-export const SECRET_CIPHER = Symbol('SECRET_CIPHER');
+export const PUBLIC_KEY_VERIFIER = Symbol('PUBLIC_KEY_VERIFIER');
+export const AUTH_GRPC_CLIENT = Symbol('AUTH_GRPC_CLIENT');
+export const USER_LOOKUP = Symbol('USER_LOOKUP');
 
-export const USER_REPOSITORY = Symbol('USER_REPOSITORY');
 export const BRANCH_REPOSITORY = Symbol('BRANCH_REPOSITORY');
 export const PARKING_SLOT_REPOSITORY = Symbol('PARKING_SLOT_REPOSITORY');
 export const RESERVATION_REPOSITORY = Symbol('RESERVATION_REPOSITORY');
