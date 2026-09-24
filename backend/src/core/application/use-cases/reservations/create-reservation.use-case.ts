@@ -8,14 +8,14 @@ import { NoAvailabilityError } from '../../../domain/errors/no-availability.erro
 import { ReservationAlreadyActiveError } from '../../../domain/errors/reservation-already-active.error';
 import type { BranchRepositoryPort } from '../../../ports/out/branch.repository.port';
 import type { ReservationRepositoryPort } from '../../../ports/out/reservation.repository.port';
-import type { UserRepositoryPort } from '../../../ports/out/user.repository.port';
+import type { UserLookupPort } from '../../../ports/out/user-lookup.port';
 import {
   BRANCH_REPOSITORY,
   CLOCK,
   NOTIFICATION_PUBLISHER,
   REALTIME_NOTIFIER,
   RESERVATION_REPOSITORY,
-  USER_REPOSITORY,
+  USER_LOOKUP,
 } from '../../../ports/out/tokens';
 import {
   RESERVATION_POLICY,
@@ -56,7 +56,7 @@ export class CreateReservationUseCase implements CreateReservationPort {
     private readonly slotAssignmentPolicy: SlotAssignmentPolicy,
     @Inject(CLOCK) private readonly clock: ClockPort,
     @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifierPort,
-    @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
+    @Inject(USER_LOOKUP) private readonly users: UserLookupPort,
     @Inject(BRANCH_REPOSITORY) private readonly branches: BranchRepositoryPort,
     @Inject(NOTIFICATION_PUBLISHER)
     private readonly notifications: NotificationPublisherPort,

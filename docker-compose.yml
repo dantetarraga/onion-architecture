@@ -16,6 +16,27 @@ services:
       timeout: 5s
       retries: 10
 
+  # Base de datos propia de auth-service: aislamiento real, separada de la
+  # base de negocio (`postgres`/smart_parking). No hay FK cross-database
+  # posible, por eso Reservation/ParkingSession/Payment solo guardan un
+  # userId opaco y ya no una relacion Prisma hacia User.
+  auth-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUTH_POSTGRES_USER:-auth}
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD:-auth}
+      POSTGRES_DB: ${AUTH_POSTGRES_DB:-auth_db}
+    ports:
+      - "${AUTH_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_POSTGRES_USER:-auth} -d ${AUTH_POSTGRES_DB:-auth_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   kafka:
     image: apache/kafka:3.7.0
     restart: unless-stopped
@@ -74,6 +95,52 @@ services:
       timeout: 10s
       retries: 10
 
+  # Microservicio de autenticacion: JWT local, Google (Firebase), Facebook y
+  # MFA TOTP. Dueño exclusivo de la tabla User (base de datos propia,
+  # auth-postgres) y de la clave privada RS256. Expone gRPC (AuthService, ver
+  # proto/auth.proto) y un health check HTTP; no tiene puerto publico.
+  auth-service:
+    build:
+      context: ./auth-service
+    restart: unless-stopped
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${AUTH_POSTGRES_USER:-auth}:${AUTH_POSTGRES_PASSWORD:-auth}@auth-postgres:5432/${AUTH_POSTGRES_DB:-auth_db}?schema=public
+      PORT: 3010
+      GRPC_PORT: 50051
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      MFA_CHALLENGE_EXPIRES_IN: ${MFA_CHALLENGE_EXPIRES_IN:-5m}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-hdlizana}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
+      FACEBOOK_GRAPH_VERSION: ${FACEBOOK_GRAPH_VERSION:-v21.0}
+    command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/bootstrap/main.js"
+
+  # Gateway publico: unico servicio con el puerto 3000. El frontend no cambia
+  # ni de URL ni de contrato REST. Auth se resuelve via gRPC contra
+  # auth-service (JwtAuthGuard verifica RS256 localmente, sin llamar por red
+  # en cada request); todo lo demas se reenvia por HTTP a `backend`.
+  gateway:
+    build:
+      context: ./gateway
+    restart: unless-stopped
+    depends_on:
+      - auth-service
+      - backend
+    environment:
+      PORT: 3000
+      AUTH_SERVICE_GRPC_URL: auth-service:50051
+      BACKEND_INTERNAL_URL: http://backend:3001
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    ports:
+      - "3000:3000"
+
   backend:
     build:
       context: ./backend
@@ -85,25 +152,29 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      auth-service:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
-      PORT: 3000
-      JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret-key-min-32-chars}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      PORT: 3001
+      # Defensa en profundidad: backend verifica el mismo JWT (RS256) que ya
+      # valido gateway, localmente, sin llamar a auth-service. Solo necesita
+      # la clave publica, nunca la privada.
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      # Unico uso de gRPC hacia auth-service que no es validacion de token:
+      # CreateReservationUseCase pide email/fullName reales para el correo
+      # de confirmacion de reserva (evento Kafka).
+      AUTH_SERVICE_GRPC_URL: auth-service:50051
       RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-hdlizana}
-      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
-      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
-      FACEBOOK_GRAPH_VERSION: ${FACEBOOK_GRAPH_VERSION:-v21.0}
-      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
-      MFA_CHALLENGE_EXPIRES_IN: ${MFA_CHALLENGE_EXPIRES_IN:-5m}
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}
       KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
     ports:
-      - "3000:3000"
+      # Sin exponer publicamente (el gateway es la unica puerta de entrada);
+      # solo en localhost para poder curl/debuggear backend directo durante la demo.
+      - "127.0.0.1:3001:3001"
     command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/bootstrap/main.js"
 
   # Worker de reservas: mismo build que `backend`, pero en vez de servir HTTP
@@ -122,11 +193,13 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      auth-service:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
       RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
       SLOT_ASSIGNMENT_STRATEGY: ${SLOT_ASSIGNMENT_STRATEGY:-default}
-      JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret-key-min-32-chars}
+      AUTH_SERVICE_GRPC_URL: auth-service:50051
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}-worker
       KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
@@ -161,13 +234,15 @@ services:
       context: ./frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      - gateway
     environment:
+      # Sigue apuntando a :3000 - ahora lo sirve `gateway`, no `backend`. El
+      # frontend no cambia ni una linea.
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
       VITE_WS_URL: ${VITE_WS_URL:-http://localhost:3000}
       # Config publica del proyecto Firebase (login con Google). El apiKey de
       # Firebase Web es publico por diseño, se restringe por dominio en la
-      # consola; el projectId debe coincidir con FIREBASE_PROJECT_ID del backend.
+      # consola; el projectId debe coincidir con FIREBASE_PROJECT_ID de auth-service.
       VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-AIzaSyBNylqVfSm9_ofvWAlj3DyIgcGncUsR6-k}
       VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-hdlizana.firebaseapp.com}
       VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-hdlizana}
@@ -181,3 +256,4 @@ services:
 
 volumes:
   postgres-data:
+  auth-postgres-data:

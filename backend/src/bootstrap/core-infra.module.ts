@@ -1,10 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { AesGcmSecretCipherAdapter } from '../adapters/out/auth/aes-gcm-secret-cipher.adapter';
-import { BcryptPasswordHasherAdapter } from '../adapters/out/auth/bcrypt-password-hasher.adapter';
-import { FacebookGraphTokenAdapter } from '../adapters/out/auth/facebook-graph-token.adapter';
-import { FirebaseGoogleTokenAdapter } from '../adapters/out/auth/firebase-google-token.adapter';
-import { JwtTokenAdapter } from '../adapters/out/auth/jwt-token.adapter';
-import { Rfc6238TotpAdapter } from '../adapters/out/auth/rfc6238-totp.adapter';
+import { Rs256PublicKeyVerifierAdapter } from '../adapters/out/auth/rs256-public-key-verifier.adapter';
 import { SystemClockAdapter } from '../adapters/out/clock/system-clock.adapter';
 import { CardPaymentAdapter } from '../adapters/out/payments/card-payment.adapter';
 import { CashPaymentAdapter } from '../adapters/out/payments/cash-payment.adapter';
@@ -14,14 +9,9 @@ import { YapePaymentAdapter } from '../adapters/out/payments/yape-payment.adapte
 import { HmacQrCodeAdapter } from '../adapters/out/qr/hmac-qrcode.adapter';
 import {
   CLOCK,
-  FACEBOOK_TOKEN_VERIFIER,
-  GOOGLE_TOKEN_VERIFIER,
-  PASSWORD_HASHER,
   PAYMENT_METHOD,
+  PUBLIC_KEY_VERIFIER,
   QR_CODE,
-  SECRET_CIPHER,
-  TOKEN_SERVICE,
-  TOTP,
 } from '../core/ports/out/tokens';
 
 @Global()
@@ -29,28 +19,13 @@ import {
   providers: [
     { provide: CLOCK, useClass: SystemClockAdapter },
     { provide: QR_CODE, useClass: HmacQrCodeAdapter },
-    { provide: TOKEN_SERVICE, useClass: JwtTokenAdapter },
-    { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasherAdapter },
-    { provide: GOOGLE_TOKEN_VERIFIER, useClass: FirebaseGoogleTokenAdapter },
-    { provide: FACEBOOK_TOKEN_VERIFIER, useClass: FacebookGraphTokenAdapter },
-    { provide: TOTP, useClass: Rfc6238TotpAdapter },
-    { provide: SECRET_CIPHER, useClass: AesGcmSecretCipherAdapter },
+    { provide: PUBLIC_KEY_VERIFIER, useClass: Rs256PublicKeyVerifierAdapter },
     CashPaymentAdapter,
     CardPaymentAdapter,
     YapePaymentAdapter,
     PlinPaymentAdapter,
     { provide: PAYMENT_METHOD, useClass: PaymentMethodRouterAdapter },
   ],
-  exports: [
-    CLOCK,
-    QR_CODE,
-    TOKEN_SERVICE,
-    PASSWORD_HASHER,
-    GOOGLE_TOKEN_VERIFIER,
-    FACEBOOK_TOKEN_VERIFIER,
-    TOTP,
-    SECRET_CIPHER,
-    PAYMENT_METHOD,
-  ],
+  exports: [CLOCK, QR_CODE, PUBLIC_KEY_VERIFIER, PAYMENT_METHOD],
 })
 export class CoreInfraModule {}

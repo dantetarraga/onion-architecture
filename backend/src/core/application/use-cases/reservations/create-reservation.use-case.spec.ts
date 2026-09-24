@@ -7,8 +7,6 @@ import {
   Reservation,
   ReservationProps,
 } from '../../../domain/entities/reservation.entity';
-import { User, UserProps } from '../../../domain/entities/user.entity';
-import { Role } from '../../../domain/enums/role.enum';
 import { ReservationStatus } from '../../../domain/enums/reservation-status.enum';
 import { SlotStatus } from '../../../domain/enums/slot-status.enum';
 import { SlotType } from '../../../domain/enums/slot-type.enum';
@@ -17,7 +15,10 @@ import type { ReservationPolicy } from '../../../domain/policies/reservation.pol
 import type { SlotAssignmentPolicy } from '../../../domain/policies/slot-assignment.policy';
 import type { BranchRepositoryPort } from '../../../ports/out/branch.repository.port';
 import type { ReservationRepositoryPort } from '../../../ports/out/reservation.repository.port';
-import type { UserRepositoryPort } from '../../../ports/out/user.repository.port';
+import type {
+  UserLookupPort,
+  UserLookupResult,
+} from '../../../ports/out/user-lookup.port';
 import type { ClockPort } from '../../../ports/out/clock.port';
 import type { NotificationPublisherPort } from '../../../ports/out/notification-publisher.port';
 import type { RealtimeNotifierPort } from '../../../ports/out/realtime-notifier.port';
@@ -36,17 +37,13 @@ function buildBranch(overrides: Partial<BranchProps> = {}): Branch {
   });
 }
 
-function buildUser(overrides: Partial<UserProps> = {}): User {
-  return new User({
+function buildUser(overrides: Partial<UserLookupResult> = {}): UserLookupResult {
+  return {
     id: 'user-1',
     email: 'user@parking.com',
-    passwordHash: 'hash',
     fullName: 'Usuario de Prueba',
-    role: Role.USER,
-    mfaEnabled: false,
-    createdAt: new Date(),
     ...overrides,
-  });
+  };
 }
 
 function buildSlot(overrides: Partial<ParkingSlotProps> = {}): ParkingSlot {
@@ -112,12 +109,8 @@ describe('CreateReservationUseCase', () => {
     notifyPaymentRegistered: jest.fn(),
     notifyReservationRequestResolved: jest.fn(),
   };
-  const usersRepo: jest.Mocked<UserRepositoryPort> = {
+  const usersRepo: jest.Mocked<UserLookupPort> = {
     findById: jest.fn(),
-    findByEmail: jest.fn(),
-    create: jest.fn(),
-    findMfaCredentials: jest.fn(),
-    updateMfa: jest.fn(),
   };
   const branchesRepo: jest.Mocked<BranchRepositoryPort> = {
     findById: jest.fn(),

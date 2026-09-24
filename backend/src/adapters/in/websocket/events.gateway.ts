@@ -8,8 +8,8 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import type { TokenPort } from '../../../core/ports/out/token.port';
-import { TOKEN_SERVICE } from '../../../core/ports/out/tokens';
+import type { PublicKeyVerifierPort } from '../../../core/ports/out/token.port';
+import { PUBLIC_KEY_VERIFIER } from '../../../core/ports/out/tokens';
 import { Role } from '../../../core/domain/enums/role.enum';
 
 @WebSocketGateway({
@@ -22,7 +22,7 @@ export class EventsGateway implements OnGatewayConnection {
 
   private readonly logger = new Logger(EventsGateway.name);
 
-  constructor(@Inject(TOKEN_SERVICE) private readonly tokenService: TokenPort) {}
+  constructor(@Inject(PUBLIC_KEY_VERIFIER) private readonly tokenService: PublicKeyVerifierPort) {}
 
   async handleConnection(client: Socket): Promise<void> {
     const token = client.handshake.auth?.token as string | undefined;
