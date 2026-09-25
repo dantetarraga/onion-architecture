@@ -37,6 +37,26 @@ services:
       timeout: 5s
       retries: 10
 
+  # Base de datos propia de payments-service (mismo criterio que auth-postgres):
+  # ningun otro servicio tiene acceso. payments guarda sessionId/userId/branchId
+  # como ids opacos, sin FK hacia la base de negocio.
+  payments-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PAYMENTS_POSTGRES_USER:-payments}
+      POSTGRES_PASSWORD: ${PAYMENTS_POSTGRES_PASSWORD:-payments}
+      POSTGRES_DB: ${PAYMENTS_POSTGRES_DB:-payments_db}
+    ports:
+      - "${PAYMENTS_POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - payments-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAYMENTS_POSTGRES_USER:-payments} -d ${PAYMENTS_POSTGRES_DB:-payments_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   kafka:
     image: apache/kafka:3.7.0
     restart: unless-stopped
@@ -121,10 +141,55 @@ services:
       FACEBOOK_GRAPH_VERSION: ${FACEBOOK_GRAPH_VERSION:-v21.0}
     command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/bootstrap/main.js"
 
+  # Microservicio de pagos: cobro por metodo (mock de efectivo/tarjeta/Yape/
+  # Plin), dueño exclusivo de la tabla payments (base propia). Dos entradas:
+  # HTTP para el navegador (gateway le enruta /payments y /users/me/payments)
+  # y gRPC para backend (PaymentsService, ver proto/payments.proto). Pide la
+  # cotizacion de la sesion a backend por gRPC (ParkingService) y publica
+  # `payment.registered` en RabbitMQ para el dashboard en tiempo real.
+  payments-service:
+    build:
+      context: ./payments-service
+    restart: unless-stopped
+    depends_on:
+      payments-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${PAYMENTS_POSTGRES_USER:-payments}:${PAYMENTS_POSTGRES_PASSWORD:-payments}@payments-postgres:5432/${PAYMENTS_POSTGRES_DB:-payments_db}?schema=public
+      PORT: 3020
+      GRPC_PORT: 50052
+      PARKING_SERVICE_GRPC_URL: backend:50053
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
+    command: sh -c "npx prisma migrate deploy && node dist/src/bootstrap/main.js"
+
+  # Servicio de tiempo real: el socket.io (namespace /realtime) que antes vivia
+  # dentro de backend. Sin base de datos ni dominio: consume el exchange
+  # fanout `realtime.events` (lo publican backend, reservations-worker y
+  # payments-service) y reemite cada evento a sus salas. Escala horizontal:
+  # cada instancia tiene su propia cola exclusiva (`--scale realtime-service=2`).
+  realtime-service:
+    build:
+      context: ./realtime-service
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      PORT: 3030
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
+
   # Gateway publico: unico servicio con el puerto 3000. El frontend no cambia
   # ni de URL ni de contrato REST. Auth se resuelve via gRPC contra
   # auth-service (JwtAuthGuard verifica RS256 localmente, sin llamar por red
-  # en cada request); todo lo demas se reenvia por HTTP a `backend`.
+  # en cada request); pagos van por HTTP a `payments-service`, el socket.io
+  # (/socket.io, HTTP + upgrade) a `realtime-service` y todo lo demas a `backend`.
   gateway:
     build:
       context: ./gateway
@@ -132,10 +197,14 @@ services:
     depends_on:
       - auth-service
       - backend
+      - payments-service
+      - realtime-service
     environment:
       PORT: 3000
       AUTH_SERVICE_GRPC_URL: auth-service:50051
       BACKEND_INTERNAL_URL: http://backend:3001
+      PAYMENTS_INTERNAL_URL: http://payments-service:3020
+      REALTIME_INTERNAL_URL: http://realtime-service:3030
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
     ports:
@@ -165,12 +234,17 @@ services:
       # CreateReservationUseCase pide email/fullName reales para el correo
       # de confirmacion de reserva (evento Kafka).
       AUTH_SERVICE_GRPC_URL: auth-service:50051
+      # Salida de cochera (sesion pagada?) y reporte de ingresos: via gRPC.
+      PAYMENTS_SERVICE_GRPC_URL: payments-service:50052
+      # Entrada gRPC propia (ParkingService): payments-service cotiza sesiones aca.
+      GRPC_PORT: 50053
       RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}
       KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
     ports:
       # Sin exponer publicamente (el gateway es la unica puerta de entrada);
       # solo en localhost para poder curl/debuggear backend directo durante la demo.
@@ -200,11 +274,13 @@ services:
       RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
       SLOT_ASSIGNMENT_STRATEGY: ${SLOT_ASSIGNMENT_STRATEGY:-default}
       AUTH_SERVICE_GRPC_URL: auth-service:50051
+      PAYMENTS_SERVICE_GRPC_URL: payments-service:50052
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}-worker
       KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
       RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-1}
     command: node dist/src/bootstrap/worker-main.js
 
@@ -238,7 +314,8 @@ services:
       - gateway
     environment:
       # Sigue apuntando a :3000 - ahora lo sirve `gateway`, no `backend`. El
-      # frontend no cambia ni una linea.
+      # frontend no cambia ni una linea (el socket.io tambien entra por :3000 y
+      # gateway lo reenvia a realtime-service).
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
       VITE_WS_URL: ${VITE_WS_URL:-http://localhost:3000}
       # Config publica del proyecto Firebase (login con Google). El apiKey de
@@ -258,3 +335,4 @@ services:
 volumes:
   postgres-data:
   auth-postgres-data:
+  payments-postgres-data:

@@ -39,12 +39,6 @@ enum SessionStatus {
   COMPLETED
 }
 
-enum PaymentStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
 model Branch {
   id           String        @id @default(uuid())
   name         String
@@ -107,22 +101,7 @@ model ParkingSession {
   status        SessionStatus @default(ACTIVE)
   entryAt       DateTime      @default(now())
   exitAt        DateTime?
-  payment       Payment?
 
   @@index([userId, status])
   @@map("parking_sessions")
-}
-
-model Payment {
-  id                String         @id @default(uuid())
-  sessionId         String         @unique
-  session           ParkingSession @relation(fields: [sessionId], references: [id])
-  userId            String
-  amount            Decimal        @db.Decimal(10, 2)
-  status            PaymentStatus  @default(PENDING)
-  externalReference String?
-  paidAt            DateTime?
-  createdAt         DateTime       @default(now())
-
-  @@map("payments")
 }

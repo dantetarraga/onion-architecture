@@ -1,7 +1,7 @@
 {
   "name": "gateway",
   "version": "0.1.0",
-  "description": "BFF publico: expone el mismo contrato REST de siempre. Auth se resuelve via gRPC contra auth-service; todo lo demas se reenvia por HTTP a backend. El frontend no cambia.",
+  "description": "BFF publico: expone el mismo contrato REST de siempre. Auth se resuelve via gRPC contra auth-service; pagos y tiempo real se reenvian por HTTP a payments-service y realtime-service; todo lo demas a backend. El frontend no cambia.",
   "author": "",
   "private": true,
   "license": "UNLICENSED",

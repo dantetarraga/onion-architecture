@@ -17,7 +17,7 @@ import { SessionNotActiveError } from '../../../domain/errors/session-not-active
 import type { ParkingPolicy } from '../../../domain/policies/parking.policy';
 import type { PricingPolicy } from '../../../domain/policies/pricing.policy';
 import type { ParkingSessionRepositoryPort } from '../../../ports/out/parking-session.repository.port';
-import type { PaymentRepositoryPort } from '../../../ports/out/payment.repository.port';
+import type { PaymentLookupPort } from '../../../ports/out/payment-lookup.port';
 import type { ReservationRepositoryPort } from '../../../ports/out/reservation.repository.port';
 import type { ClockPort } from '../../../ports/out/clock.port';
 import type { QrCodePort } from '../../../ports/out/qr-code.port';
@@ -96,7 +96,6 @@ describe('RegisterExitUseCase', () => {
     notifyOccupancyUpdated: jest.fn(),
     notifyEntryRegistered: jest.fn(),
     notifyExitRegistered: jest.fn(),
-    notifyPaymentRegistered: jest.fn(),
     notifyReservationRequestResolved: jest.fn(),
   };
   const sessionsRepo: jest.Mocked<ParkingSessionRepositoryPort> = {
@@ -107,13 +106,9 @@ describe('RegisterExitUseCase', () => {
     markCompleted: jest.fn(),
     listByUser: jest.fn(),
   };
-  const paymentsRepo: jest.Mocked<PaymentRepositoryPort> = {
-    findById: jest.fn(),
+  const paymentsRepo: jest.Mocked<PaymentLookupPort> = {
     findBySessionId: jest.fn(),
-    create: jest.fn(),
-    increaseAmount: jest.fn(),
-    listByUser: jest.fn(),
-    sumApprovedAmountByBranch: jest.fn(),
+    sumApprovedByBranch: jest.fn(),
   };
   const reservationsRepo: jest.Mocked<ReservationRepositoryPort> = {
     findById: jest.fn(),

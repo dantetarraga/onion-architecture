@@ -9,11 +9,11 @@ import { NotFoundError } from '../../../domain/errors/not-found.error';
 import type { ParkingPolicy } from '../../../domain/policies/parking.policy';
 import type { PricingPolicy } from '../../../domain/policies/pricing.policy';
 import type { ParkingSessionRepositoryPort } from '../../../ports/out/parking-session.repository.port';
-import type { PaymentRepositoryPort } from '../../../ports/out/payment.repository.port';
+import type { PaymentLookupPort } from '../../../ports/out/payment-lookup.port';
 import type { ReservationRepositoryPort } from '../../../ports/out/reservation.repository.port';
 import {
   PARKING_SESSION_REPOSITORY,
-  PAYMENT_REPOSITORY,
+  PAYMENT_LOOKUP,
   RESERVATION_REPOSITORY,
 } from '../../../ports/out/tokens';
 import {
@@ -42,8 +42,8 @@ export class RegisterExitUseCase implements RegisterExitPort {
     @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifierPort,
     @Inject(PARKING_SESSION_REPOSITORY)
     private readonly sessions: ParkingSessionRepositoryPort,
-    @Inject(PAYMENT_REPOSITORY)
-    private readonly payments: PaymentRepositoryPort,
+    @Inject(PAYMENT_LOOKUP)
+    private readonly payments: PaymentLookupPort,
     @Inject(RESERVATION_REPOSITORY)
     private readonly reservations: ReservationRepositoryPort,
   ) {}

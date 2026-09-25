@@ -57,13 +57,13 @@ const branches: BranchSeed[] = [
 async function main() {
   console.log('Seeding database...');
 
-  await prisma.payment.deleteMany();
   await prisma.parkingSession.deleteMany();
   await prisma.reservation.deleteMany();
   await prisma.parkingSlot.deleteMany();
   await prisma.branch.deleteMany();
   // Los usuarios (admin@parking.com / user@parking.com) ahora se siembran en
   // auth-service/prisma/seed.ts: User vive en su propia base de datos.
+  // Los pagos viven en payments-service (base propia, sin seed).
 
   for (const branchSeed of branches) {
     const branch = await prisma.branch.create({

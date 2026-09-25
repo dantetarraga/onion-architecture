@@ -14,9 +14,7 @@ export const REGISTER_EXIT = Symbol('REGISTER_EXIT');
 export const REPORT_SLOT_BLOCKED = Symbol('REPORT_SLOT_BLOCKED');
 
 export const CALCULATE_AMOUNT = Symbol('CALCULATE_AMOUNT');
-export const GET_PAYMENT = Symbol('GET_PAYMENT');
-export const LIST_USER_PAYMENTS = Symbol('LIST_USER_PAYMENTS');
-export const REGISTER_PAYMENT = Symbol('REGISTER_PAYMENT');
+export const GET_SESSION_QUOTE = Symbol('GET_SESSION_QUOTE');
 
 export const CANCEL_RESERVATION = Symbol('CANCEL_RESERVATION');
 export const CREATE_RESERVATION = Symbol('CREATE_RESERVATION');

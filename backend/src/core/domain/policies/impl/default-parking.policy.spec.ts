@@ -16,7 +16,7 @@ import { ReservationExpiredError } from '../../errors/reservation-expired.error'
 import { SessionAlreadyActiveError } from '../../errors/session-already-active.error';
 import { ParkingSessionRepositoryPort } from '../../../ports/out/parking-session.repository.port';
 import { ParkingSlotRepositoryPort } from '../../../ports/out/parking-slot.repository.port';
-import { PaymentRepositoryPort } from '../../../ports/out/payment.repository.port';
+import { PaymentLookupPort } from '../../../ports/out/payment-lookup.port';
 import { ReservationRepositoryPort } from '../../../ports/out/reservation.repository.port';
 import { DefaultParkingPolicy } from './default-parking.policy';
 
@@ -95,13 +95,9 @@ describe('DefaultParkingPolicy', () => {
     getOccupancySummary: jest.fn(),
     markAllOccupied: jest.fn(),
   };
-  const paymentsRepo: jest.Mocked<PaymentRepositoryPort> = {
-    findById: jest.fn(),
+  const paymentsRepo: jest.Mocked<PaymentLookupPort> = {
     findBySessionId: jest.fn(),
-    create: jest.fn(),
-    increaseAmount: jest.fn(),
-    listByUser: jest.fn(),
-    sumApprovedAmountByBranch: jest.fn(),
+    sumApprovedByBranch: jest.fn(),
   };
 
   let policy: DefaultParkingPolicy;

@@ -36,11 +36,5 @@ export interface RealtimeNotifierPort {
   notifyOccupancyUpdated(branchId: string): void;
   notifyEntryRegistered(payload: { sessionId: string; branchId: string; slotId: string; userId: string }): void;
   notifyExitRegistered(payload: { sessionId: string; branchId: string; slotId: string }): void;
-  notifyPaymentRegistered(payload: {
-    paymentId: string;
-    sessionId: string;
-    amount: number;
-    status: string;
-  }): void;
   notifyReservationRequestResolved(payload: ReservationRequestResolvedPayload): void;
 }

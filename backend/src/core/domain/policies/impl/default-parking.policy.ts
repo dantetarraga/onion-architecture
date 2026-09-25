@@ -7,7 +7,7 @@ import { SessionAlreadyActiveError } from '../../errors/session-already-active.e
 import { NotFoundError } from '../../errors/not-found.error';
 import { ParkingSessionRepositoryPort } from '../../../ports/out/parking-session.repository.port';
 import { ParkingSlotRepositoryPort } from '../../../ports/out/parking-slot.repository.port';
-import { PaymentRepositoryPort } from '../../../ports/out/payment.repository.port';
+import { PaymentLookupPort } from '../../../ports/out/payment-lookup.port';
 import { ReservationRepositoryPort } from '../../../ports/out/reservation.repository.port';
 import {
   ExitResult,
@@ -22,7 +22,7 @@ export class DefaultParkingPolicy implements ParkingPolicy {
     private readonly reservations: ReservationRepositoryPort,
     private readonly sessions: ParkingSessionRepositoryPort,
     private readonly slots: ParkingSlotRepositoryPort,
-    private readonly payments: PaymentRepositoryPort,
+    private readonly payments: PaymentLookupPort,
   ) {}
 
   async registerEntry(input: RegisterEntryInput): Promise<ParkingSession> {

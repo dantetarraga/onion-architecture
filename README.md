@@ -7,18 +7,40 @@ Sistema Inteligente de Gestión de Estacionamientos construido con **Onion Archi
 - **Backend:** NestJS + TypeScript + Prisma + PostgreSQL + JWT (jose) + WebSockets (Socket.io) + `@nestjs/schedule` + Swagger.
 - **Mensajería:** **RabbitMQ** (`amqplib`) como cola de solicitudes de reserva y **Kafka** (`kafkajs`) como bus de eventos para el correo de confirmación. Roles distintos a propósito: una solicitud la procesa **un** worker (ack o DLQ), un evento lo leen **N** consumidores.
 - **Frontend:** React + TypeScript + Vite + Tailwind CSS v4 + Zustand + Axios + `socket.io-client`.
-- **Infra:** Docker Compose (Postgres, Kafka + Kafka UI, RabbitMQ + UI de gestión, API, worker de reservas, frontend).
+- **Infra:** Docker Compose (3 Postgres —negocio, auth, pagos—, Kafka + Kafka UI, RabbitMQ + UI de gestión, gateway, auth-service, backend, worker de reservas, payments-service, realtime-service, notifications-service, frontend).
 
 ## Estructura
 
 ```
 smart-parking-system/
-├── backend/    # NestJS — core (domain + application) / adapters (in + out) / bootstrap
-│   └── src/bootstrap/  main.ts (API HTTP + WebSocket) · worker-main.ts (consumidor de RabbitMQ)
-├── frontend/   # React + Vite + Tailwind + Zustand
-├── docs/       # arquitectura-hexagonal.md · demo-runbook.md · anatomia-cola-reservas.md
+├── gateway/                # Única puerta pública (:3000). Auth por gRPC; el resto, proxy HTTP por path
+├── auth-service/           # Usuarios, JWT RS256, Google, Facebook, MFA TOTP — base propia (auth-postgres)
+├── backend/                # Sucursales, cocheras, reservas, sesiones y tarifa (PricingPolicy)
+│   └── src/bootstrap/      main.ts (HTTP + gRPC ParkingService) · worker-main.ts (consumidor de RabbitMQ)
+├── payments-service/       # Cobro por método y reporte de ingresos — base propia (payments-postgres)
+├── realtime-service/       # socket.io (/realtime): reemite el exchange `realtime.events` a las salas
+├── notifications-service/  # Consumidor de Kafka -> correo de confirmación
+├── proto/                  # Contratos gRPC (fuente única): auth · payments · parking
+├── frontend/               # React + Vite + Tailwind + Zustand
+├── docs/
 └── docker-compose.yml
 ```
+
+### Microservicios y cómo se hablan
+
+| Servicio | Dueño de | Entra por | Llama a |
+|---|---|---|---|
+| `gateway` | — | HTTP público :3000 | auth-service (gRPC), backend / payments-service / realtime-service (proxy HTTP y WebSocket) |
+| `auth-service` | `users` | gRPC `AuthService` | — |
+| `backend` | `branches`, `parking_slots`, `reservations`, `parking_sessions` | HTTP (vía gateway) · gRPC `ParkingService` | auth-service y payments-service (gRPC), RabbitMQ, Kafka |
+| `reservations-worker` | (mismo código que backend) | cola `reservations.requests` | igual que backend |
+| `payments-service` | `payments` | HTTP `/payments`, `/users/me/payments` (vía gateway) · gRPC `PaymentsService` | backend (gRPC, cotización), RabbitMQ |
+| `realtime-service` | — (sin base) | socket.io `/realtime` (vía gateway) | consume `realtime.events` |
+| `notifications-service` | — | tópico Kafka | SMTP |
+
+Las URLs públicas no cambiaron: el frontend sigue hablando solo con `:3000`. Después de editar
+cualquier `.proto` en `proto/`, correr `node scripts/sync-proto.js` para copiarlo a cada servicio
+(`--check` falla si alguna copia quedó desactualizada).
 
 El flujo de reserva es asíncrono: `POST /reservations` encola la solicitud y responde `202 { requestId }`;
 el worker la procesa y el desenlace vuelve al navegador por WebSocket (`reservation.request.resolved`).
@@ -72,6 +94,7 @@ npm test
 
 ## Documentación
 
+- [`docs/arquitectura-microservicios.md`](docs/arquitectura-microservicios.md) — mapa de servicios, rutas del gateway, gRPC/RabbitMQ/Kafka y qué pasa si cae cada servicio. Estado del backend en [`backend/README.md`](backend/README.md).
 - [`docs/arquitectura-hexagonal.md`](docs/arquitectura-hexagonal.md) — por qué cada pieza es un puerto `in` u `out`, y las decisiones de clasificación que no se derivan mecánicamente de la estructura.
 - [`docs/anatomia-cola-reservas.md`](docs/anatomia-cola-reservas.md) — qué hace y cómo funciona cada archivo del flujo asíncrono de reservas sobre RabbitMQ, ordenado por el camino que recorre un mensaje.
 - [`docs/login-google-firebase.md`](docs/login-google-firebase.md) — cómo se implementó el login con Google: verificación del ID token con `jose` + JWKS (sin `firebase-admin`), vinculación por email y config de Firebase.

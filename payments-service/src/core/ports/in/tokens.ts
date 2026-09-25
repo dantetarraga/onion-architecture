@@ -1,0 +1,5 @@
+export const GET_PAYMENT = Symbol('GET_PAYMENT');
+export const LIST_USER_PAYMENTS = Symbol('LIST_USER_PAYMENTS');
+export const REGISTER_PAYMENT = Symbol('REGISTER_PAYMENT');
+export const GET_PAYMENT_BY_SESSION = Symbol('GET_PAYMENT_BY_SESSION');
+export const SUM_APPROVED_BY_BRANCH = Symbol('SUM_APPROVED_BY_BRANCH');

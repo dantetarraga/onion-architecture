@@ -16,6 +16,25 @@ services:
       timeout: 5s
       retries: 10
 
+  # Base propia de payments-service (correr payments-service en el host con
+  # DATABASE_URL=postgresql://payments:payments@localhost:5435/payments_db).
+  payments-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PAYMENTS_POSTGRES_USER:-payments}
+      POSTGRES_PASSWORD: ${PAYMENTS_POSTGRES_PASSWORD:-payments}
+      POSTGRES_DB: ${PAYMENTS_POSTGRES_DB:-payments_db}
+    ports:
+      - "${PAYMENTS_POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - payments-postgres-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAYMENTS_POSTGRES_USER:-payments} -d ${PAYMENTS_POSTGRES_DB:-payments_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   kafka:
     image: apache/kafka:3.7.0
     restart: unless-stopped
@@ -73,3 +92,4 @@ services:
 
 volumes:
   postgres-dev-data:
+  payments-postgres-dev-data:

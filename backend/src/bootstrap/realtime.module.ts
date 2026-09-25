@@ -1,22 +1,16 @@
 import { Global, Module } from '@nestjs/common';
 import { REALTIME_NOTIFIER } from '../core/ports/out/tokens';
-import { RealtimeRelayConsumer } from '../adapters/in/messaging/realtime-relay.consumer';
-import { EventsGateway } from '../adapters/in/websocket/events.gateway';
-import { RealtimeNotifierAdapter } from '../adapters/out/realtime/realtime-notifier.adapter';
+import { RabbitRealtimePublisherAdapter } from '../adapters/out/realtime/rabbit-realtime-publisher.adapter';
 
 /**
- * Tiempo real del proceso API: el gateway socket.io, el adaptador que
- * implementa el puerto emitiendo por socket, y el consumidor que reemite
- * los eventos que el worker mando por RabbitMQ (ver `WorkerModule`, donde
- * el mismo puerto se resuelve al relay en vez de al socket).
+ * Tiempo real de backend (API y worker por igual): el puerto se resuelve al
+ * publicador de RabbitMQ. Los sockets viven en realtime-service, que consume
+ * el exchange `realtime.events` y emite a los navegadores. Requiere
+ * MessagingModule (RabbitMqConnection) y RepositoriesModule (ocupacion).
  */
 @Global()
 @Module({
-  providers: [
-    EventsGateway,
-    { provide: REALTIME_NOTIFIER, useClass: RealtimeNotifierAdapter },
-    RealtimeRelayConsumer,
-  ],
-  exports: [REALTIME_NOTIFIER, EventsGateway],
+  providers: [{ provide: REALTIME_NOTIFIER, useClass: RabbitRealtimePublisherAdapter }],
+  exports: [REALTIME_NOTIFIER],
 })
 export class RealtimeModule {}

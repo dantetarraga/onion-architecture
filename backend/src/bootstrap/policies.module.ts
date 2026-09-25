@@ -9,9 +9,9 @@ import type { SlotAssignmentPolicy } from '../core/domain/policies/slot-assignme
 import type { BranchRepositoryPort } from '../core/ports/out/branch.repository.port';
 import type { ParkingSessionRepositoryPort } from '../core/ports/out/parking-session.repository.port';
 import type { ParkingSlotRepositoryPort } from '../core/ports/out/parking-slot.repository.port';
-import type { PaymentRepositoryPort } from '../core/ports/out/payment.repository.port';
+import type { PaymentLookupPort } from '../core/ports/out/payment-lookup.port';
 import type { ReservationRepositoryPort } from '../core/ports/out/reservation.repository.port';
-import { BRANCH_REPOSITORY, PARKING_SESSION_REPOSITORY, PARKING_SLOT_REPOSITORY, PAYMENT_REPOSITORY, RESERVATION_REPOSITORY } from '../core/ports/out/tokens';
+import { BRANCH_REPOSITORY, PARKING_SESSION_REPOSITORY, PARKING_SLOT_REPOSITORY, PAYMENT_LOOKUP, RESERVATION_REPOSITORY } from '../core/ports/out/tokens';
 import { PARKING_POLICY, PRICING_POLICY, RESERVATION_POLICY, SLOT_ASSIGNMENT_POLICY } from '../core/domain/policies/policy-tokens';
 
 const DEFAULT_TOLERANCE_MINUTES = 20;
@@ -58,9 +58,9 @@ const DEFAULT_TOLERANCE_MINUTES = 20;
         reservations: ReservationRepositoryPort,
         sessions: ParkingSessionRepositoryPort,
         slots: ParkingSlotRepositoryPort,
-        payments: PaymentRepositoryPort,
+        payments: PaymentLookupPort,
       ) => new DefaultParkingPolicy(reservations, sessions, slots, payments),
-      inject: [RESERVATION_REPOSITORY, PARKING_SESSION_REPOSITORY, PARKING_SLOT_REPOSITORY, PAYMENT_REPOSITORY],
+      inject: [RESERVATION_REPOSITORY, PARKING_SESSION_REPOSITORY, PARKING_SLOT_REPOSITORY, PAYMENT_LOOKUP],
     },
   ],
   exports: [SLOT_ASSIGNMENT_POLICY, PRICING_POLICY, RESERVATION_POLICY, PARKING_POLICY],

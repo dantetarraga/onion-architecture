@@ -22,7 +22,7 @@ import type {
  * lanzar. Confirmar una reserva es la operacion critica del negocio;
  * notificar por correo es un efecto secundario que no debe poder tumbar el
  * flujo principal (mismo criterio que ya se aplica en
- * `RealtimeNotifierAdapter`, que tampoco bloquea la reserva si el socket
+ * `RabbitRealtimePublisherAdapter`, que tampoco bloquea la reserva si RabbitMQ
  * falla).
  */
 @Injectable()

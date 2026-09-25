@@ -8,9 +8,9 @@ import { RealtimeModule } from './realtime.module';
 import { MessagingModule } from './messaging.module';
 import { AdminModule } from './admin.module';
 import { AuthGrpcModule } from './auth-grpc.module';
+import { PaymentsGrpcModule } from './payments-grpc.module';
 import { BranchesModule } from './branches.module';
 import { ParkingModule } from './parking.module';
-import { PaymentsModule } from './payments.module';
 import { ReservationsModule } from './reservations.module';
 import { SchedulerModule } from './scheduler.module';
 import { UsersModule } from './users.module';
@@ -27,11 +27,11 @@ import { AppService } from './app.service';
     RealtimeModule,
     MessagingModule,
     AuthGrpcModule,
+    PaymentsGrpcModule,
     UsersModule,
     BranchesModule,
     ReservationsModule,
     ParkingModule,
-    PaymentsModule,
     AdminModule,
     SchedulerModule,
   ],
