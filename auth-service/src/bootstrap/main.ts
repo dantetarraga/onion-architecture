@@ -2,9 +2,11 @@ import { join } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { AppModule } from './app.module';
+import { httpMetricsMiddleware, startMetricsServer } from '../observability/metrics';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(httpMetricsMiddleware);
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.GRPC,
@@ -20,5 +22,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT ?? 3010);
+  startMetricsServer();
 }
 bootstrap();

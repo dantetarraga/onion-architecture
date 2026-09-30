@@ -1,0 +1,56 @@
+# Prometheus del stack: hace pull de GET /metrics a cada servicio en su puerto
+# interno 9464 (METRICS_PORT), que no se publica al host.
+#
+# dns_sd_configs en vez de static_configs: el DNS de Docker Compose resuelve el
+# nombre del servicio a TODAS sus replicas, asi que con
+# `docker compose up --scale reservations-worker=3` (o realtime-service=2)
+# Prometheus scrapea cada instancia por separado sin tocar este archivo.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: gateway
+    dns_sd_configs:
+      - { names: [gateway], type: A, port: 9464, refresh_interval: 15s }
+
+  - job_name: auth-service
+    dns_sd_configs:
+      - { names: [auth-service], type: A, port: 9464, refresh_interval: 15s }
+
+  - job_name: backend
+    dns_sd_configs:
+      - { names: [backend], type: A, port: 9464, refresh_interval: 15s }
+
+  - job_name: reservations-worker
+    dns_sd_configs:
+      - { names: [reservations-worker], type: A, port: 9464, refresh_interval: 15s }
+
+  - job_name: payments-service
+    dns_sd_configs:
+      - { names: [payments-service], type: A, port: 9464, refresh_interval: 15s }
+
+  - job_name: realtime-service
+    dns_sd_configs:
+      - { names: [realtime-service], type: A, port: 9464, refresh_interval: 15s }
+
+  - job_name: notifications-service
+    dns_sd_configs:
+      - { names: [notifications-service], type: A, port: 9464, refresh_interval: 15s }
+
+  # Plugin rabbitmq_prometheus (viene habilitado en la imagen oficial). El
+  # endpoint /metrics/detailed con estas familias da metricas POR COLA
+  # (reservations.requests, su DLQ...), que el endpoint agregado no tiene.
+  - job_name: rabbitmq
+    metrics_path: /metrics/detailed
+    params:
+      family: [queue_coarse_metrics, queue_consumer_count]
+    static_configs:
+      - targets: ['rabbitmq:15692']
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

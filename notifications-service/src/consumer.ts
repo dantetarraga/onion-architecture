@@ -1,6 +1,11 @@
 import { Kafka, EachMessagePayload } from 'kafkajs';
 import { config } from './config';
 import { sendConfirmationEmail } from './mailer';
+import {
+  emailSendAttempts,
+  messageProcessingDuration,
+  notificationMessages,
+} from './metrics';
 import { isReservationConfirmationEvent } from './types';
 
 const MAX_SEND_ATTEMPTS = 3;
@@ -20,6 +25,7 @@ async function processMessage(payload: EachMessagePayload): Promise<void> {
   const raw = payload.message.value?.toString('utf-8');
   if (!raw) {
     console.warn('[consumer] Mensaje sin valor, se ignora.');
+    notificationMessages.inc({ outcome: 'invalid' });
     return;
   }
 
@@ -30,6 +36,7 @@ async function processMessage(payload: EachMessagePayload): Promise<void> {
     console.error(
       `[consumer] Mensaje no es JSON valido, se descarta: ${(error as Error).message}`,
     );
+    notificationMessages.inc({ outcome: 'invalid' });
     return;
   }
 
@@ -38,17 +45,23 @@ async function processMessage(payload: EachMessagePayload): Promise<void> {
       '[consumer] Mensaje no tiene la forma de ReservationConfirmationEvent, se ignora.',
       parsed,
     );
+    notificationMessages.inc({ outcome: 'invalid' });
     return;
   }
 
   for (let attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt++) {
     try {
       await sendConfirmationEmail(parsed);
+      emailSendAttempts.inc({ result: 'success' });
+      notificationMessages.inc({
+        outcome: config.mail.enabled ? 'sent' : 'skipped',
+      });
       console.log(
         `[consumer] Correo de confirmacion procesado para reserva ${parsed.reservationId} (${parsed.userEmail})`,
       );
       return;
     } catch (error) {
+      emailSendAttempts.inc({ result: 'error' });
       const isLastAttempt = attempt === MAX_SEND_ATTEMPTS;
       console.error(
         `[consumer] Fallo al enviar correo para reserva ${parsed.reservationId} (intento ${attempt}/${MAX_SEND_ATTEMPTS}): ${(error as Error).message}`,
@@ -57,6 +70,7 @@ async function processMessage(payload: EachMessagePayload): Promise<void> {
         console.error(
           `[consumer] Se agotaron los reintentos para reserva ${parsed.reservationId}. Correo NO enviado.`,
         );
+        notificationMessages.inc({ outcome: 'failed' });
         return;
       }
       await sleep(RETRY_BASE_DELAY_MS * attempt);
@@ -85,7 +99,12 @@ export async function startConsumer(): Promise<() => Promise<void>> {
 
   await consumer.run({
     eachMessage: async (payload) => {
-      await processMessage(payload);
+      const end = messageProcessingDuration.startTimer();
+      try {
+        await processMessage(payload);
+      } finally {
+        end();
+      }
     },
   });
 

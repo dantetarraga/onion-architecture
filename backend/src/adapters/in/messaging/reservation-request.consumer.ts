@@ -5,6 +5,7 @@ import type { ProcessReservationRequestPort } from '../../../core/ports/in/reser
 import { PROCESS_RESERVATION_REQUEST } from '../../../core/ports/in/tokens';
 import type { ReservationRequestMessage } from '../../../core/ports/out/reservation-request-queue.port';
 import { RabbitMqConnection } from '../../out/messaging/rabbitmq.connection';
+import { reservationRequestsProcessed } from '../../../observability/metrics';
 
 /**
  * Adaptador IN: consume la cola de trabajo y dispara el nucleo, igual que
@@ -64,12 +65,14 @@ export class ReservationRequestConsumer implements OnModuleInit {
         `Mensaje ilegible descartado a la DLQ: ${(error as Error).message}`,
       );
       channel.nack(message, false, false);
+      reservationRequestsProcessed.inc({ outcome: 'invalid' });
       return;
     }
 
     try {
       await this.processRequest.execute(payload);
       channel.ack(message);
+      reservationRequestsProcessed.inc({ outcome: 'processed' });
       this.logger.log(`Solicitud ${payload.requestId} procesada`);
     } catch (error) {
       // Los rechazos de negocio ya los absorbio el caso de uso; llegar aqui
@@ -79,6 +82,7 @@ export class ReservationRequestConsumer implements OnModuleInit {
         `Solicitud ${payload.requestId} fallo, enviada a la DLQ: ${(error as Error).message}`,
       );
       channel.nack(message, false, false);
+      reservationRequestsProcessed.inc({ outcome: 'failed' });
     }
   }
 

@@ -7,7 +7,7 @@ Sistema Inteligente de Gestión de Estacionamientos construido con **Onion Archi
 - **Backend:** NestJS + TypeScript + Prisma + PostgreSQL + JWT (jose) + WebSockets (Socket.io) + `@nestjs/schedule` + Swagger.
 - **Mensajería:** **RabbitMQ** (`amqplib`) como cola de solicitudes de reserva y **Kafka** (`kafkajs`) como bus de eventos para el correo de confirmación. Roles distintos a propósito: una solicitud la procesa **un** worker (ack o DLQ), un evento lo leen **N** consumidores.
 - **Frontend:** React + TypeScript + Vite + Tailwind CSS v4 + Zustand + Axios + `socket.io-client`.
-- **Infra:** Docker Compose (3 Postgres —negocio, auth, pagos—, Kafka + Kafka UI, RabbitMQ + UI de gestión, gateway, auth-service, backend, worker de reservas, payments-service, realtime-service, notifications-service, frontend).
+- **Infra:** Docker Compose (3 Postgres —negocio, auth, pagos—, Kafka + Kafka UI, RabbitMQ + UI de gestión, gateway, auth-service, backend, worker de reservas, payments-service, realtime-service, notifications-service, frontend) + **Prometheus** y **Grafana** para métricas.
 
 ## Estructura
 
@@ -20,6 +20,7 @@ smart-parking-system/
 ├── payments-service/       # Cobro por método y reporte de ingresos — base propia (payments-postgres)
 ├── realtime-service/       # socket.io (/realtime): reemite el exchange `realtime.events` a las salas
 ├── notifications-service/  # Consumidor de Kafka -> correo de confirmación
+├── observability/          # Prometheus (scrape + alertas) y Grafana (datasource + dashboard provisionados)
 ├── proto/                  # Contratos gRPC (fuente única): auth · payments · parking
 ├── frontend/               # React + Vite + Tailwind + Zustand
 ├── docs/
@@ -85,6 +86,17 @@ cp .env.example .env
 docker compose up --build
 ```
 
+## Observabilidad (Prometheus + Grafana)
+
+Cada servicio (gateway, auth, backend, reservations-worker, payments, realtime, notifications) expone
+`GET /metrics` con `prom-client` en su puerto interno `9464`; Prometheus los descubre por DNS (incluidas
+las réplicas de `--scale`) y también lee las colas de RabbitMQ.
+
+- Grafana: http://localhost:3100 (`admin` / `admin`) → dashboard **Smart Parking - Microservicios**, ya provisionado.
+- Prometheus: http://localhost:9090 (targets en `/targets`, alertas en `/alerts`).
+
+Qué se mide y cómo leer cada panel: [`docs/observabilidad.md`](docs/observabilidad.md).
+
 ## Tests
 
 ```bash
@@ -100,4 +112,5 @@ npm test
 - [`docs/login-google-firebase.md`](docs/login-google-firebase.md) — cómo se implementó el login con Google: verificación del ID token con `jose` + JWKS (sin `firebase-admin`), vinculación por email y config de Firebase.
 - [`docs/login-facebook.md`](docs/login-facebook.md) — cómo se implementó el login con Facebook sin Firebase: verificación del access token contra la Graph API (`/debug_token` + `/me`), por qué aquí sí hay un secreto y cómo configurar la app de Facebook.
 - [`docs/mfa-totp.md`](docs/mfa-totp.md) — verificación en dos pasos con Google Authenticator (TOTP, RFC 6238) sin ninguna cuenta ni credencial externa: cómo se engancha a los tres logins, secreto cifrado, anti-replay, backup codes y rate limit.
+- [`docs/observabilidad.md`](docs/observabilidad.md) — métricas de cada microservicio (HTTP, gRPC, colas y negocio), cómo las recoge Prometheus, el dashboard de Grafana y las alertas.
 - [`docs/demo-runbook.md`](docs/demo-runbook.md) — checklist paso a paso de la demostración en vivo.

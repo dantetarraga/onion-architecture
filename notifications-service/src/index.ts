@@ -1,11 +1,13 @@
 import { config } from './config';
 import { startConsumer } from './consumer';
+import { startMetricsServer } from './metrics';
 
 async function main(): Promise<void> {
   console.log(
     `[notifications-service] Iniciando. MAIL_ENABLED=${config.mail.enabled} MAIL_HOST=${config.mail.host}:${config.mail.port}`,
   );
 
+  startMetricsServer();
   const stopConsumer = await startConsumer();
 
   const shutdown = async (signal: string) => {

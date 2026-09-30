@@ -2,6 +2,11 @@ import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { createTokenVerifier } from './auth';
 import { config } from './config';
+import {
+  connectedSockets,
+  connectionAttempts,
+  startMetricsServer,
+} from './metrics';
 import { startRelay } from './relay';
 import type { AuthenticatedUser } from './types';
 
@@ -31,13 +36,16 @@ async function main(): Promise<void> {
   nsp.use(async (socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined;
     if (!token) {
+      connectionAttempts.inc({ result: 'missing_token' });
       next(new Error('Token de autenticacion faltante.'));
       return;
     }
     try {
       socket.data.user = await verify(token);
+      connectionAttempts.inc({ result: 'accepted' });
       next();
     } catch {
+      connectionAttempts.inc({ result: 'invalid_token' });
       console.warn(`[realtime-service] conexion rechazada: token invalido (${socket.id})`);
       next(new Error('Token de autenticacion invalido.'));
     }
@@ -45,6 +53,8 @@ async function main(): Promise<void> {
 
   nsp.on('connection', (socket) => {
     const user = socket.data.user as AuthenticatedUser;
+    connectedSockets.inc();
+    socket.on('disconnect', () => connectedSockets.dec());
     void socket.join(`user:${user.sub}`);
     if (user.role === 'ADMIN') {
       void socket.join('admin');
@@ -58,6 +68,7 @@ async function main(): Promise<void> {
     });
   });
 
+  startMetricsServer();
   const stopRelay = await startRelay(nsp);
 
   httpServer.listen(config.port, () => {

@@ -226,6 +226,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
       PORT: 3001
+      SERVICE_NAME: backend
       # Defensa en profundidad: backend verifica el mismo JWT (RS256) que ya
       # valido gateway, localmente, sin llamar a auth-service. Solo necesita
       # la clave publica, nunca la privada.
@@ -271,6 +272,7 @@ services:
         condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
+      SERVICE_NAME: reservations-worker
       RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
       SLOT_ASSIGNMENT_STRATEGY: ${SLOT_ASSIGNMENT_STRATEGY:-default}
       AUTH_SERVICE_GRPC_URL: auth-service:50051
@@ -332,7 +334,47 @@ services:
     ports:
       - "5173:5173"
 
+  # Observabilidad. Cada servicio Node expone GET /metrics (prom-client) en
+  # su puerto interno 9464, sin publicarlo al host; Prometheus los descubre por
+  # DNS (incluidas las replicas de --scale) y Grafana grafica desde Prometheus.
+  # Config en observability/: prometheus.yml (scrape), alerts.yml (reglas) y el
+  # datasource + dashboard de Grafana ya provisionados.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  # http://localhost:3100 (admin/admin por defecto). Datasource y dashboard
+  # "Smart Parking - Microservicios" se cargan solos al arrancar.
+  grafana:
+    image: grafana/grafana:12.1.1
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/smart-parking-overview.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3100}:3000"
+
 volumes:
   postgres-data:
   auth-postgres-data:
   payments-postgres-data:
+  prometheus-data:
+  grafana-data:

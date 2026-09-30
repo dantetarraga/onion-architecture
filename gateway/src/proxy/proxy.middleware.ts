@@ -44,6 +44,22 @@ function isPaymentsRoute(req: Request): boolean {
   return req.path === '/users/me/payments' && req.method === 'GET';
 }
 
+export type Upstream = 'gateway' | 'realtime-service' | 'payments-service' | 'backend';
+
+/** Mismo ruteo que el middleware de abajo; lo usa tambien la etiqueta `upstream` de las metricas. */
+export function upstreamFor(req: Request): Upstream {
+  if (isGatewayOwnedRoute(req)) {
+    return 'gateway';
+  }
+  if (isRealtimeRoute(req.path)) {
+    return 'realtime-service';
+  }
+  if (isPaymentsRoute(req)) {
+    return 'payments-service';
+  }
+  return 'backend';
+}
+
 export function createServicesProxy() {
   const backend = createProxyMiddleware({
     target: process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001',
@@ -62,16 +78,16 @@ export function createServicesProxy() {
   });
 
   const middleware = (req: Request, res: Response, next: NextFunction) => {
-    if (isGatewayOwnedRoute(req)) {
-      return next();
+    switch (upstreamFor(req)) {
+      case 'gateway':
+        return next();
+      case 'realtime-service':
+        return realtime(req, res, next);
+      case 'payments-service':
+        return payments(req, res, next);
+      default:
+        return backend(req, res, next);
     }
-    if (isRealtimeRoute(req.path)) {
-      return realtime(req, res, next);
-    }
-    if (isPaymentsRoute(req)) {
-      return payments(req, res, next);
-    }
-    return backend(req, res, next);
   };
 
   /** Solo realtime-service habla WebSocket; cualquier otro upgrade se corta. */

@@ -1,4 +1,4 @@
-import { Controller, Inject } from '@nestjs/common';
+import { Controller, Inject, UseInterceptors } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import type { User } from '../../../core/domain/entities/user.entity';
 import type { ConfirmMfaPort } from '../../../core/ports/in/auth/confirm-mfa.port';
@@ -22,6 +22,7 @@ import {
   VERIFY_MFA,
 } from '../../../core/ports/in/tokens';
 import type { LoginUserResult } from '../../../core/application/use-cases/auth/issue-session';
+import { GrpcMetricsInterceptor } from '../../../observability/grpc-metrics.interceptor';
 import { callUseCase } from './grpc-domain-error';
 
 function toUserReply(user: User) {
@@ -52,6 +53,7 @@ function toLoginReply(result: LoginUserResult) {
   };
 }
 
+@UseInterceptors(GrpcMetricsInterceptor)
 @Controller()
 export class AuthGrpcController {
   constructor(

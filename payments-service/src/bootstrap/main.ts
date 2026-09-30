@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { AppModule } from './app.module';
+import { httpMetricsMiddleware, startMetricsServer } from '../observability/metrics';
 import { DomainExceptionFilter } from '../adapters/in/http/filters/domain-exception.filter';
 
 /**
@@ -14,6 +15,7 @@ import { DomainExceptionFilter } from '../adapters/in/http/filters/domain-except
  */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(httpMetricsMiddleware);
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new DomainExceptionFilter());
@@ -30,5 +32,6 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(process.env.PORT ?? 3020);
+  startMetricsServer();
 }
 bootstrap();

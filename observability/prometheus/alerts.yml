@@ -1,0 +1,47 @@
+# Reglas de alerta evaluadas por Prometheus. No hay Alertmanager en el stack:
+# el estado (pending/firing) se ve en http://localhost:9090/alerts y en Grafana.
+groups:
+  - name: smart-parking
+    rules:
+      - alert: ServiceDown
+        expr: up{job!="prometheus"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: '{{ $labels.job }} ({{ $labels.instance }}) no responde al scrape'
+
+      - alert: HighHttpErrorRate
+        expr: |
+          sum by (service) (rate(http_server_request_duration_seconds_count{status_code=~"5.."}[5m]))
+            / sum by (service) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Mas del 5% de requests 5xx en {{ $labels.service }}'
+
+      - alert: HighHttpLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum by (service, le) (rate(http_server_request_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'p95 HTTP de {{ $labels.service }} por encima de 1s'
+
+      - alert: ReservationRequestsFailing
+        expr: sum(increase(reservation_requests_processed_total{outcome=~"failed|invalid"}[5m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: 'Solicitudes de reserva enviadas a la DLQ en los ultimos 5 minutos'
+
+      - alert: ReservationsQueueBacklog
+        expr: sum(rabbitmq_detailed_queue_messages_ready{queue="reservations.requests"}) > 20
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Se acumulan solicitudes en reservations.requests (worker caido o lento?)'
+
+      - alert: NotificationEmailsFailing
+        expr: sum(increase(notification_messages_total{outcome="failed"}[10m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: 'Correos de confirmacion que no se pudieron enviar'

@@ -2,6 +2,7 @@ import * as amqp from 'amqplib';
 import type { ChannelModel, ConsumeMessage } from 'amqplib';
 import type { Namespace } from 'socket.io';
 import { config } from './config';
+import { eventsDropped, eventsRelayed, rabbitConnected } from './metrics';
 import type { RealtimeEventEnvelope } from './types';
 
 const ADMIN_ROOM = 'admin';
@@ -18,14 +19,18 @@ export function emitEnvelope(nsp: Namespace, envelope: RealtimeEventEnvelope): v
   switch (target.type) {
     case 'branch':
       nsp.to(`branch:${target.branchId}`).to(ADMIN_ROOM).emit(event, payload);
+      eventsRelayed.inc({ event, target: target.type });
       return;
     case 'user':
       nsp.to(`user:${target.userId}`).to(ADMIN_ROOM).emit(event, payload);
+      eventsRelayed.inc({ event, target: target.type });
       return;
     case 'admin':
       nsp.to(ADMIN_ROOM).emit(event, payload);
+      eventsRelayed.inc({ event, target: target.type });
       return;
     default:
+      eventsDropped.inc();
       console.warn(`[realtime-service] target desconocido en "${event}":`, target);
   }
 }
@@ -50,10 +55,12 @@ export async function startRelay(nsp: Namespace): Promise<() => Promise<void>> {
       const envelope = JSON.parse(message.content.toString()) as RealtimeEventEnvelope;
       if (!envelope?.event || !envelope.target) {
         console.warn('[realtime-service] mensaje sin event/target, se descarta');
+        eventsDropped.inc();
         return;
       }
       emitEnvelope(nsp, envelope);
     } catch (error) {
+      eventsDropped.inc();
       console.error('[realtime-service] no se pudo reemitir un evento:', (error as Error).message);
     }
   };
@@ -74,6 +81,7 @@ export async function startRelay(nsp: Namespace): Promise<() => Promise<void>> {
       });
       connection.on('close', () => {
         model = null;
+        rabbitConnected.set(0);
         if (!stopped) {
           console.warn(
             `[realtime-service] conexion con RabbitMQ cerrada, reintentando en ${config.rabbitmq.reconnectDelayMs}ms`,
@@ -93,6 +101,7 @@ export async function startRelay(nsp: Namespace): Promise<() => Promise<void>> {
       await channel.consume(queue, handle, { noAck: true });
 
       model = connection;
+      rabbitConnected.set(1);
       console.log(`[realtime-service] reemitiendo "${config.rabbitmq.exchange}" hacia socket.io`);
     } catch (error) {
       console.warn(

@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { createServicesProxy } from '../proxy/proxy.middleware';
+import { httpMetricsMiddleware, startMetricsServer } from '../observability/metrics';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -25,7 +26,9 @@ async function bootstrap() {
   // de Nest no hace fallthrough en un 404 real, asi que la decision no puede
   // depender del orden de registro en Express).
   const proxy = createServicesProxy();
+  app.use(httpMetricsMiddleware);
   app.use(proxy);
+  startMetricsServer();
 
   const server = await app.listen(process.env.PORT ?? 3000);
   server.on('upgrade', proxy.upgrade);

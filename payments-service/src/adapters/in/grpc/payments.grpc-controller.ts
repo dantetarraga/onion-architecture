@@ -1,4 +1,4 @@
-import { Controller, Inject } from '@nestjs/common';
+import { Controller, Inject, UseInterceptors } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import type { Payment } from '../../../core/domain/entities/payment.entity';
 import type { GetPaymentBySessionPort } from '../../../core/ports/in/payments/get-payment-by-session.port';
@@ -7,6 +7,7 @@ import {
   GET_PAYMENT_BY_SESSION,
   SUM_APPROVED_BY_BRANCH,
 } from '../../../core/ports/in/tokens';
+import { GrpcMetricsInterceptor } from '../../../observability/grpc-metrics.interceptor';
 import { callUseCase } from './grpc-domain-error';
 
 function toPaymentReply(payment: Payment) {
@@ -24,6 +25,7 @@ function toPaymentReply(payment: Payment) {
 }
 
 /** Entrada interna (solo backend). El trafico del navegador entra por HTTP (PaymentsController). */
+@UseInterceptors(GrpcMetricsInterceptor)
 @Controller()
 export class PaymentsGrpcController {
   constructor(
