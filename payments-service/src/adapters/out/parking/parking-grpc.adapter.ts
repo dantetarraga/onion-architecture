@@ -8,6 +8,8 @@ import type {
   SessionQuote,
 } from '../../../core/ports/out/session-billing.port';
 import { PARKING_GRPC_CLIENT } from '../../../core/ports/out/tokens';
+import { circuitBreakerMetrics } from '../../../observability/metrics';
+import { CircuitBreaker } from '../resilience/circuit-breaker';
 
 interface SessionQuoteReply {
   sessionId: string;
@@ -25,6 +27,19 @@ interface ParkingServiceGrpc {
 
 const RPC_TIMEOUT_MS = 5000;
 
+/** Un error de dominio viaja como JSON `{code, message}` en `details` (ver adapters/in/grpc). */
+function isDomainError(error: unknown): boolean {
+  const details = (error as { details?: string } | undefined)?.details;
+  if (!details) {
+    return false;
+  }
+  try {
+    return Boolean((JSON.parse(details) as { code?: string }).code);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Cliente gRPC hacia backend (ParkingService, ver proto/parking.proto).
  * Si backend responde un error de dominio (p.ej. NOT_FOUND) viene como JSON
@@ -36,6 +51,11 @@ const RPC_TIMEOUT_MS = 5000;
 export class ParkingGrpcAdapter implements SessionBillingPort, OnModuleInit {
   private readonly logger = new Logger(ParkingGrpcAdapter.name);
   private client!: ParkingServiceGrpc;
+  private readonly breaker = new CircuitBreaker({
+    name: 'backend',
+    isFailure: (error) => !isDomainError(error),
+    ...circuitBreakerMetrics,
+  });
 
   constructor(@Inject(PARKING_GRPC_CLIENT) private readonly grpc: ClientGrpc) {}
 
@@ -45,8 +65,10 @@ export class ParkingGrpcAdapter implements SessionBillingPort, OnModuleInit {
 
   async getQuote(sessionId: string): Promise<SessionQuote> {
     try {
-      const reply = await firstValueFrom(
-        this.client.getSessionQuote({ sessionId }).pipe(timeout(RPC_TIMEOUT_MS)),
+      const reply = await this.breaker.execute(() =>
+        firstValueFrom(
+          this.client.getSessionQuote({ sessionId }).pipe(timeout(RPC_TIMEOUT_MS)),
+        ),
       );
       return {
         sessionId: reply.sessionId,

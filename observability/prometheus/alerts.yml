@@ -45,3 +45,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: 'Correos de confirmacion que no se pudieron enviar'
+
+      - alert: CircuitBreakerOpen
+        expr: max by (service, target) (circuit_breaker_state) == 2
+        labels: { severity: critical }
+        annotations:
+          summary: '{{ $labels.service }} abrio el circuito hacia {{ $labels.target }} (llamadas rechazadas en fail-fast)'

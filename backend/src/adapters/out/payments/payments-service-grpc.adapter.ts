@@ -9,6 +9,8 @@ import type {
   PaymentLookupPort,
 } from '../../../core/ports/out/payment-lookup.port';
 import { PAYMENTS_GRPC_CLIENT } from '../../../core/ports/out/tokens';
+import { circuitBreakerMetrics } from '../../../observability/metrics';
+import { CircuitBreaker } from '../resilience/circuit-breaker';
 
 interface PaymentReply {
   id: string;
@@ -35,6 +37,19 @@ interface PaymentsServiceGrpc {
 
 const RPC_TIMEOUT_MS = 5000;
 
+/** Un error de dominio viaja como JSON `{code, message}` en `details` (ver adapters/in/grpc). */
+function isDomainError(error: unknown): boolean {
+  const details = (error as { details?: string } | undefined)?.details;
+  if (!details) {
+    return false;
+  }
+  try {
+    return Boolean((JSON.parse(details) as { code?: string }).code);
+  } catch {
+    return false;
+  }
+}
+
 function toDomain(reply: PaymentReply): Payment {
   return new Payment({
     id: reply.id,
@@ -54,6 +69,11 @@ function toDomain(reply: PaymentReply): Payment {
 export class PaymentsServiceGrpcAdapter implements PaymentLookupPort, OnModuleInit {
   private readonly logger = new Logger(PaymentsServiceGrpcAdapter.name);
   private client!: PaymentsServiceGrpc;
+  private readonly breaker = new CircuitBreaker({
+    name: 'payments-service',
+    isFailure: (error) => !isDomainError(error),
+    ...circuitBreakerMetrics,
+  });
 
   constructor(@Inject(PAYMENTS_GRPC_CLIENT) private readonly grpc: ClientGrpc) {}
 
@@ -85,7 +105,11 @@ export class PaymentsServiceGrpcAdapter implements PaymentLookupPort, OnModuleIn
 
   private async call<T>(rpc: string, request: () => Observable<T>): Promise<T> {
     try {
-      return await firstValueFrom(request().pipe(timeout(RPC_TIMEOUT_MS)));
+      // Circuito abierto -> falla al instante (sin esperar los 5s de timeout)
+      // y termina igual en PaymentServiceUnavailableError -> 503.
+      return await this.breaker.execute(() =>
+        firstValueFrom(request().pipe(timeout(RPC_TIMEOUT_MS))),
+      );
     } catch (error) {
       this.logger.error(
         `${rpc} fallo contra payments-service: ${(error as Error)?.message ?? String(error)}`,

@@ -1,6 +1,13 @@
 import { createServer, type Server } from 'node:http';
 import type { NextFunction, Request, Response } from 'express';
-import { collectDefaultMetrics, Histogram, Registry } from 'prom-client';
+import {
+  collectDefaultMetrics,
+  Counter,
+  Gauge,
+  Histogram,
+  Registry,
+} from 'prom-client';
+import type { CircuitState } from '../common/circuit-breaker';
 import { upstreamFor } from '../proxy/proxy.middleware';
 
 /**
@@ -52,6 +59,30 @@ export function httpMetricsMiddleware(
   });
   next();
 }
+
+/** Estado de cada circuit breaker hacia otro servicio: 0=CLOSED, 1=HALF_OPEN, 2=OPEN. */
+export const circuitBreakerState = new Gauge({
+  name: 'circuit_breaker_state',
+  help: 'Estado del circuit breaker por servicio destino (0=CLOSED, 1=HALF_OPEN, 2=OPEN).',
+  labelNames: ['target'] as const,
+  registers: [registry],
+});
+
+export const circuitBreakerRejections = new Counter({
+  name: 'circuit_breaker_rejections_total',
+  help: 'Llamadas rechazadas sin tocar la red porque el circuito estaba abierto.',
+  labelNames: ['target'] as const,
+  registers: [registry],
+});
+
+const STATE_VALUE: Record<CircuitState, number> = { CLOSED: 0, HALF_OPEN: 1, OPEN: 2 };
+
+/** Hooks para CircuitBreaker: publica cada cambio de estado y cada rechazo. */
+export const circuitBreakerMetrics = {
+  onStateChange: (target: string, state: CircuitState) =>
+    circuitBreakerState.set({ target }, STATE_VALUE[state]),
+  onReject: (target: string) => circuitBreakerRejections.inc({ target }),
+};
 
 /**
  * Sirve GET /metrics en un puerto interno propio (METRICS_PORT, 9464 por
