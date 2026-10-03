@@ -42,6 +42,7 @@ se reparten las responsabilidades **entre** servicios y cómo se comunican.
 | `payments-service` | Cobro por método (mock de efectivo/tarjeta/Yape/Plin), historial y montos por sucursal | `payments-postgres` (`payments`) | HTTP :3020 · gRPC `PaymentsService` :50052 | NestJS + Prisma |
 | `realtime-service` | socket.io `/realtime`: reenvía eventos a las salas de sucursal, usuario y admin | — | socket.io :3030 · exchange `realtime.events` | Node + socket.io |
 | `notifications-service` | Envía el correo de confirmación de reserva | — | tópico Kafka | Node + kafkajs |
+| `audit-service` | Historial inmutable de reservas y pagos | `audit-postgres` (`audit_events`) | tópico Kafka `business.audit.events` · HTTP `/audit/events` | Node + kafkajs + PostgreSQL |
 
 Ningún servicio lee la base de otro. Entre bases no hay FK: `userId`, `sessionId` y `branchId`
 viajan como ids opacos.
@@ -55,6 +56,7 @@ El frontend usa las mismas URLs que usaba con el monolito.
 | `/auth/*`, `GET /users/me` | gateway → auth-service (gRPC) |
 | `POST /payments`, `GET /payments/:id`, `GET /users/me/payments` | payments-service (HTTP) |
 | `/socket.io/*` (polling y upgrade a WebSocket) | realtime-service |
+| `GET /audit/events` | audit-service (solo JWT con rol `ADMIN`) |
 | Todo lo demás (`/branches`, `/reservations`, `/parking`, `/admin`, `/users/me/reservations`, `/users/me/sessions`) | backend (HTTP) |
 
 Cada servicio que recibe tráfico de usuario vuelve a verificar el JWT RS256 con `JWT_PUBLIC_KEY`.
@@ -68,6 +70,7 @@ Solo auth-service tiene `JWT_PRIVATE_KEY`.
 | **RabbitMQ, cola de trabajo** `reservations.requests` | Solicitudes de reserva | Cada solicitud la procesa **un** worker (ack o DLQ). Con `prefetch=1` se evita que dos usuarios reclamen la misma cochera |
 | **RabbitMQ, fanout** `realtime.events` | Eventos para el navegador | Cada instancia de realtime-service recibe una copia y atiende a sus sockets. Si se pierde un evento no pasa nada grave |
 | **Kafka** `notifications.email.confirmation` | Correo de confirmación | Bus de eventos: podría tener N consumidores independientes |
+| **Kafka** `business.audit.events` | Historial de reservas y pagos | Consumidor independiente; su publicación es best-effort en esta primera versión |
 
 Contratos:
 - gRPC: `proto/auth.proto`, `proto/payments.proto` y `proto/parking.proto` son la fuente única.
@@ -76,6 +79,12 @@ Contratos:
 - Tiempo real: `{ event, target: branch|user|admin, payload }`, documentado en
   `realtime-service/src/types.ts`.
 - Correo: `notifications-service/src/types.ts`.
+- Auditoría: contrato JSON validado por `audit-service/src/types.ts`.
+
+Los productores no bloquean una reserva o un pago si Kafka falla, pero esta versión no usa outbox:
+un fallo al publicar puede dejar una operación sin registro de auditoría. Kafka conserva eventos ya
+publicados mientras `audit-service` está caído; al iniciar, el consumidor nuevo lee el tópico desde
+el principio y la clave primaria `event_id` evita duplicados.
 
 ## Flujos principales
 
@@ -108,6 +117,7 @@ llamada (`PaymentsService.SumApprovedByBranch`).
 | realtime-service | La app funciona pero sin actualizaciones en vivo. Los eventos publicados mientras está caído se pierden (no se acumulan) |
 | RabbitMQ | Las reservas nuevas responden 503. El resto sigue, sin eventos en vivo |
 | Kafka / notifications-service | No salen correos. La reserva se confirma igual |
+| audit-service | El negocio sigue funcionando; Kafka conserva los eventos para que el consumidor los procese al volver |
 | auth-service | No hay login. Los tokens ya emitidos siguen siendo válidos hasta que expiran (se verifican localmente) |
 
 ## Historial de la migración
@@ -118,6 +128,7 @@ llamada (`PaymentsService.SumApprovedByBranch`).
 | 2 | `auth-service` + `gateway` (usuarios y JWT; el gateway pasa a ser la entrada única) |
 | 3 | `payments-service` (tabla `payments`, métodos de pago, `/payments`) |
 | 4 | `realtime-service` (socket.io; backend solo publica eventos) |
+| 5 | `audit-service` (historial de reservas y pagos por Kafka) |
 
 Lo que queda en backend es el núcleo transaccional (sucursales, cocheras, reservas y sesiones), que
 conviene mantener junto. El razonamiento está en

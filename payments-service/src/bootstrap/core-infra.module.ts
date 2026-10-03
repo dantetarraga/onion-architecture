@@ -12,7 +12,9 @@ import { PlinPaymentAdapter } from '../adapters/out/payments/plin-payment.adapte
 import { YapePaymentAdapter } from '../adapters/out/payments/yape-payment.adapter';
 import { PrismaPaymentRepository } from '../adapters/out/persistence/prisma/repositories/prisma-payment.repository';
 import { RabbitPaymentEventsAdapter } from '../adapters/out/realtime/rabbit-payment-events.adapter';
+import { KafkaAuditEventPublisherAdapter } from '../adapters/out/messaging/kafka-audit-event-publisher.adapter';
 import {
+  AUDIT_EVENT_PUBLISHER,
   CLOCK,
   PARKING_GRPC_CLIENT,
   PAYMENT_EVENTS,
@@ -43,6 +45,7 @@ import {
     ]),
   ],
   providers: [
+    { provide: AUDIT_EVENT_PUBLISHER, useClass: KafkaAuditEventPublisherAdapter },
     { provide: CLOCK, useClass: SystemClockAdapter },
     { provide: PUBLIC_KEY_VERIFIER, useClass: Rs256PublicKeyVerifierAdapter },
     { provide: PAYMENT_REPOSITORY, useClass: PrismaPaymentRepository },
@@ -55,6 +58,7 @@ import {
     { provide: PAYMENT_METHOD, useClass: PaymentMethodRouterAdapter },
   ],
   exports: [
+    AUDIT_EVENT_PUBLISHER,
     CLOCK,
     PUBLIC_KEY_VERIFIER,
     PAYMENT_REPOSITORY,

@@ -21,6 +21,7 @@ import type {
 } from '../../../ports/out/user-lookup.port';
 import type { ClockPort } from '../../../ports/out/clock.port';
 import type { NotificationPublisherPort } from '../../../ports/out/notification-publisher.port';
+import type { AuditEventPublisherPort } from '../../../ports/out/audit-event-publisher.port';
 import type { RealtimeNotifierPort } from '../../../ports/out/realtime-notifier.port';
 import { CreateReservationUseCase } from './create-reservation.use-case';
 
@@ -120,6 +121,9 @@ describe('CreateReservationUseCase', () => {
   const notifications: jest.Mocked<NotificationPublisherPort> = {
     publishReservationConfirmation: jest.fn(),
   };
+  const auditEvents: jest.Mocked<AuditEventPublisherPort> = {
+    publishAuditEvent: jest.fn().mockResolvedValue(undefined),
+  };
 
   let useCase: CreateReservationUseCase;
   const now = new Date('2026-07-22T12:00:00.000Z');
@@ -142,6 +146,7 @@ describe('CreateReservationUseCase', () => {
       usersRepo,
       branchesRepo,
       notifications,
+      auditEvents,
     );
   });
 
@@ -192,6 +197,13 @@ describe('CreateReservationUseCase', () => {
     });
 
     expect(result.outcome).toBe('CREATED');
+    expect(auditEvents.publishAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'reservation.created',
+        aggregateId: expect.any(String),
+        actorUserId: 'user-1',
+      }),
+    );
     expect(reservationsRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ branchId: 'branch-B', slotId: slot.id }),
     );

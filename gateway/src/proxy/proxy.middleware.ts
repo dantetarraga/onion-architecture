@@ -44,12 +44,19 @@ function isPaymentsRoute(req: Request): boolean {
   return req.path === '/users/me/payments' && req.method === 'GET';
 }
 
-export type Upstream = 'gateway' | 'realtime-service' | 'payments-service' | 'backend';
+function isAuditRoute(path: string): boolean {
+  return path === '/audit' || path.startsWith('/audit/');
+}
+
+export type Upstream = 'gateway' | 'realtime-service' | 'payments-service' | 'audit-service' | 'backend';
 
 /** Mismo ruteo que el middleware de abajo; lo usa tambien la etiqueta `upstream` de las metricas. */
 export function upstreamFor(req: Request): Upstream {
   if (isGatewayOwnedRoute(req)) {
     return 'gateway';
+  }
+  if (isAuditRoute(req.path)) {
+    return 'audit-service';
   }
   if (isRealtimeRoute(req.path)) {
     return 'realtime-service';
@@ -69,6 +76,10 @@ export function createServicesProxy() {
     target: process.env.PAYMENTS_INTERNAL_URL ?? 'http://localhost:3020',
     changeOrigin: true,
   });
+  const audit = createProxyMiddleware({
+    target: process.env.AUDIT_INTERNAL_URL ?? 'http://localhost:3040',
+    changeOrigin: true,
+  });
   // Sin `ws: true`: el upgrade se engancha a mano en main.ts (ver `upgrade`
   // abajo). Con `ws: true` http-proxy-middleware ademas se suscribiria solo al
   // evento `upgrade` del server y el WebSocket se manejaria dos veces.
@@ -85,6 +96,8 @@ export function createServicesProxy() {
         return realtime(req, res, next);
       case 'payments-service':
         return payments(req, res, next);
+      case 'audit-service':
+        return audit(req, res, next);
       default:
         return backend(req, res, next);
     }

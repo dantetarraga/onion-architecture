@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { ReservationStatus } from '../../../domain/enums/reservation-status.enum';
 import { SlotStatus } from '../../../domain/enums/slot-status.enum';
@@ -8,7 +9,8 @@ import type { ReservationRepositoryPort } from '../../../ports/out/reservation.r
 import { RESERVATION_REPOSITORY } from '../../../ports/out/tokens';
 import { PARKING_POLICY } from '../../../domain/policies/policy-tokens';
 import type { RealtimeNotifierPort } from '../../../ports/out/realtime-notifier.port';
-import { REALTIME_NOTIFIER } from '../../../ports/out/tokens';
+import type { AuditEventPublisherPort } from '../../../ports/out/audit-event-publisher.port';
+import { AUDIT_EVENT_PUBLISHER, REALTIME_NOTIFIER } from '../../../ports/out/tokens';
 import type { CancelReservationPort } from '../../../ports/in/reservations/cancel-reservation.port';
 
 export interface CancelReservationInput {
@@ -23,6 +25,8 @@ export class CancelReservationUseCase implements CancelReservationPort {
     private readonly reservations: ReservationRepositoryPort,
     @Inject(PARKING_POLICY) private readonly parkingPolicy: ParkingPolicy,
     @Inject(REALTIME_NOTIFIER) private readonly notifier: RealtimeNotifierPort,
+    @Inject(AUDIT_EVENT_PUBLISHER)
+    private readonly auditEvents: AuditEventPublisherPort,
   ) {}
 
   async execute(input: CancelReservationInput): Promise<void> {
@@ -45,6 +49,20 @@ export class CancelReservationUseCase implements CancelReservationPort {
       ReservationStatus.CANCELLED,
     );
     await this.parkingPolicy.releaseSlot(reservation.slotId);
+
+    void this.auditEvents.publishAuditEvent({
+      eventId: randomUUID(),
+      eventType: 'reservation.cancelled',
+      occurredAt: new Date().toISOString(),
+      aggregateId: reservation.id,
+      actorUserId: input.userId,
+      payload: {
+        reservationId: reservation.id,
+        branchId: reservation.branchId,
+        slotId: reservation.slotId,
+        status: ReservationStatus.CANCELLED,
+      },
+    });
 
     this.notifier.notifyReservationCancelled({
       reservationId: reservation.id,

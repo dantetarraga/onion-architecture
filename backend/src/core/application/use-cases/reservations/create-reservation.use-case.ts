@@ -11,6 +11,7 @@ import type { ReservationRepositoryPort } from '../../../ports/out/reservation.r
 import type { UserLookupPort } from '../../../ports/out/user-lookup.port';
 import {
   BRANCH_REPOSITORY,
+  AUDIT_EVENT_PUBLISHER,
   CLOCK,
   NOTIFICATION_PUBLISHER,
   REALTIME_NOTIFIER,
@@ -25,6 +26,7 @@ import type { ReservationPolicy } from '../../../domain/policies/reservation.pol
 import type { SlotAssignmentPolicy } from '../../../domain/policies/slot-assignment.policy';
 import type { ClockPort } from '../../../ports/out/clock.port';
 import type { NotificationPublisherPort } from '../../../ports/out/notification-publisher.port';
+import type { AuditEventPublisherPort } from '../../../ports/out/audit-event-publisher.port';
 import type { RealtimeNotifierPort } from '../../../ports/out/realtime-notifier.port';
 import type { CreateReservationPort } from '../../../ports/in/reservations/create-reservation.port';
 
@@ -60,6 +62,8 @@ export class CreateReservationUseCase implements CreateReservationPort {
     @Inject(BRANCH_REPOSITORY) private readonly branches: BranchRepositoryPort,
     @Inject(NOTIFICATION_PUBLISHER)
     private readonly notifications: NotificationPublisherPort,
+    @Inject(AUDIT_EVENT_PUBLISHER)
+    private readonly auditEvents: AuditEventPublisherPort,
   ) {}
 
   async execute(
@@ -100,6 +104,20 @@ export class CreateReservationUseCase implements CreateReservationPort {
       requestedType: input.slotType ?? assignment.slot.type,
       startAt,
       expiresAt,
+    });
+
+    void this.auditEvents.publishAuditEvent({
+      eventId: randomUUID(),
+      eventType: 'reservation.created',
+      occurredAt: this.clock.now().toISOString(),
+      aggregateId: reservation.id,
+      actorUserId: reservation.userId,
+      payload: {
+        reservationId: reservation.id,
+        branchId: reservation.branchId,
+        slotId: reservation.slotId,
+        status: reservation.status,
+      },
     });
 
     this.notifier.notifyReservationCreated({

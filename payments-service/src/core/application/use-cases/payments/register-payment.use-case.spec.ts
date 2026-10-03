@@ -61,6 +61,9 @@ describe('RegisterPaymentUseCase', () => {
   const events: jest.Mocked<PaymentEventsPort> = {
     paymentRegistered: jest.fn(),
   };
+  const auditEvents = {
+    publishPaymentRegistered: jest.fn().mockResolvedValue(undefined),
+  };
 
   let useCase: RegisterPaymentUseCase;
   const now = new Date('2026-07-22T12:00:00.000Z');
@@ -75,6 +78,7 @@ describe('RegisterPaymentUseCase', () => {
       paymentMethod,
       clock,
       events,
+      auditEvents,
     );
   });
 
@@ -115,6 +119,14 @@ describe('RegisterPaymentUseCase', () => {
     );
     expect(events.paymentRegistered).toHaveBeenCalledWith(
       expect.objectContaining({ paymentId: 'payment-1', amount: 8 }),
+    );
+    expect(auditEvents.publishPaymentRegistered).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: 'payment-1',
+        sessionId: 'session-1',
+        userId: 'user-1',
+        status: PaymentStatus.APPROVED,
+      }),
     );
     expect(result.amount).toBe(8);
   });

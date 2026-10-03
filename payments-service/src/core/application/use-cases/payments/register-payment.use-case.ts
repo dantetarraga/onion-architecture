@@ -5,11 +5,13 @@ import { PaymentStatus } from '../../../domain/enums/payment-status.enum';
 import { NotFoundError } from '../../../domain/errors/not-found.error';
 import type { PaymentMethod } from '../../../ports/out/payment-method.port';
 import type { PaymentEventsPort } from '../../../ports/out/payment-events.port';
+import type { AuditEventPublisherPort } from '../../../ports/out/audit-event-publisher.port';
 import type { PaymentRepositoryPort } from '../../../ports/out/payment.repository.port';
 import type { SessionBillingPort } from '../../../ports/out/session-billing.port';
 import type { ClockPort } from '../../../ports/out/clock.port';
 import {
   CLOCK,
+  AUDIT_EVENT_PUBLISHER,
   PAYMENT_EVENTS,
   PAYMENT_METHOD,
   PAYMENT_REPOSITORY,
@@ -34,6 +36,8 @@ export class RegisterPaymentUseCase implements RegisterPaymentPort {
     @Inject(PAYMENT_METHOD) private readonly paymentMethod: PaymentMethod,
     @Inject(CLOCK) private readonly clock: ClockPort,
     @Inject(PAYMENT_EVENTS) private readonly events: PaymentEventsPort,
+    @Inject(AUDIT_EVENT_PUBLISHER)
+    private readonly auditEvents: AuditEventPublisherPort,
   ) {}
 
   async execute(input: RegisterPaymentInput): Promise<Payment> {
@@ -130,6 +134,15 @@ export class RegisterPaymentUseCase implements RegisterPaymentPort {
       branchId: payment.branchId,
       amount: payment.amount,
       status: payment.status,
+    });
+    void this.auditEvents.publishPaymentRegistered({
+      paymentId: payment.id,
+      sessionId: payment.sessionId,
+      branchId: payment.branchId,
+      userId: payment.userId,
+      amount: payment.amount,
+      status: payment.status,
+      occurredAt: payment.createdAt.toISOString(),
     });
   }
 }

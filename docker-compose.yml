@@ -57,6 +57,23 @@ services:
       timeout: 5s
       retries: 10
 
+  audit-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUDIT_POSTGRES_USER:-audit}
+      POSTGRES_PASSWORD: ${AUDIT_POSTGRES_PASSWORD:-audit}
+      POSTGRES_DB: ${AUDIT_POSTGRES_DB:-audit_db}
+    ports:
+      - "${AUDIT_POSTGRES_PORT:-5436}:5432"
+    volumes:
+      - audit-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUDIT_POSTGRES_USER:-audit} -d ${AUDIT_POSTGRES_DB:-audit_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   kafka:
     image: apache/kafka:3.7.0
     restart: unless-stopped
@@ -156,6 +173,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${PAYMENTS_POSTGRES_USER:-payments}:${PAYMENTS_POSTGRES_PASSWORD:-payments}@payments-postgres:5432/${PAYMENTS_POSTGRES_DB:-payments_db}?schema=public
       PORT: 3020
@@ -164,6 +183,9 @@ services:
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
       RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: payments-service
+      KAFKA_AUDIT_TOPIC: ${KAFKA_AUDIT_TOPIC:-business.audit.events}
     command: sh -c "npx prisma migrate deploy && node dist/src/bootstrap/main.js"
 
   # Servicio de tiempo real: el socket.io (namespace /realtime) que antes vivia
@@ -199,12 +221,14 @@ services:
       - backend
       - payments-service
       - realtime-service
+      - audit-service
     environment:
       PORT: 3000
       AUTH_SERVICE_GRPC_URL: auth-service:50051
       BACKEND_INTERNAL_URL: http://backend:3001
       PAYMENTS_INTERNAL_URL: http://payments-service:3020
       REALTIME_INTERNAL_URL: http://realtime-service:3030
+      AUDIT_INTERNAL_URL: http://audit-service:3040
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
     ports:
@@ -244,6 +268,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}
       KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
+      KAFKA_AUDIT_TOPIC: ${KAFKA_AUDIT_TOPIC:-business.audit.events}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
       RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
     ports:
@@ -281,6 +306,7 @@ services:
       KAFKA_BROKERS: kafka:9092
       KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}-worker
       KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
+      KAFKA_AUDIT_TOPIC: ${KAFKA_AUDIT_TOPIC:-business.audit.events}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
       RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
       RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-1}
@@ -307,6 +333,24 @@ services:
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL:-notificaciones@motoya.com.pe}
+
+  audit-service:
+    build:
+      context: ./audit-service
+    restart: unless-stopped
+    depends_on:
+      audit-postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      PORT: 3040
+      DATABASE_URL: postgresql://${AUDIT_POSTGRES_USER:-audit}:${AUDIT_POSTGRES_PASSWORD:-audit}@audit-postgres:5432/${AUDIT_POSTGRES_DB:-audit_db}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: audit-service
+      KAFKA_AUDIT_TOPIC: ${KAFKA_AUDIT_TOPIC:-business.audit.events}
+      KAFKA_CONSUMER_GROUP: audit-service
 
   frontend:
     build:
@@ -376,5 +420,6 @@ volumes:
   postgres-data:
   auth-postgres-data:
   payments-postgres-data:
+  audit-postgres-data:
   prometheus-data:
   grafana-data:

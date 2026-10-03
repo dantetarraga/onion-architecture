@@ -5,9 +5,9 @@ Sistema Inteligente de Gestión de Estacionamientos construido con **Onion Archi
 ## Stack
 
 - **Backend:** NestJS + TypeScript + Prisma + PostgreSQL + JWT (jose) + WebSockets (Socket.io) + `@nestjs/schedule` + Swagger.
-- **Mensajería:** **RabbitMQ** (`amqplib`) como cola de solicitudes de reserva y **Kafka** (`kafkajs`) como bus de eventos para el correo de confirmación. Roles distintos a propósito: una solicitud la procesa **un** worker (ack o DLQ), un evento lo leen **N** consumidores.
+- **Mensajería:** **RabbitMQ** (`amqplib`) como cola de solicitudes de reserva y **Kafka** (`kafkajs`) como bus de correo y eventos de auditoría. Roles distintos a propósito: una solicitud la procesa **un** worker (ack o DLQ), un evento lo leen **N** consumidores.
 - **Frontend:** React + TypeScript + Vite + Tailwind CSS v4 + Zustand + Axios + `socket.io-client`.
-- **Infra:** Docker Compose (3 Postgres —negocio, auth, pagos—, Kafka + Kafka UI, RabbitMQ + UI de gestión, gateway, auth-service, backend, worker de reservas, payments-service, realtime-service, notifications-service, frontend) + **Prometheus** y **Grafana** para métricas.
+- **Infra:** Docker Compose (4 Postgres —negocio, auth, pagos, auditoría—, Kafka + Kafka UI, RabbitMQ + UI de gestión, gateway, auth-service, backend, worker de reservas, payments-service, realtime-service, notifications-service, audit-service, frontend) + **Prometheus** y **Grafana** para métricas.
 
 ## Estructura
 
@@ -20,6 +20,7 @@ smart-parking-system/
 ├── payments-service/       # Cobro por método y reporte de ingresos — base propia (payments-postgres)
 ├── realtime-service/       # socket.io (/realtime): reemite el exchange `realtime.events` a las salas
 ├── notifications-service/  # Consumidor de Kafka -> correo de confirmación
+├── audit-service/          # Consumidor Kafka -> historial de eventos (audit-postgres)
 ├── observability/          # Prometheus (scrape + alertas) y Grafana (datasource + dashboard provisionados)
 ├── proto/                  # Contratos gRPC (fuente única): auth · payments · parking
 ├── frontend/               # React + Vite + Tailwind + Zustand
@@ -31,13 +32,14 @@ smart-parking-system/
 
 | Servicio | Dueño de | Entra por | Llama a |
 |---|---|---|---|
-| `gateway` | — | HTTP público :3000 | auth-service (gRPC), backend / payments-service / realtime-service (proxy HTTP y WebSocket) |
+| `gateway` | — | HTTP público :3000 | auth-service (gRPC), backend / payments-service / realtime-service / audit-service (proxy HTTP y WebSocket) |
 | `auth-service` | `users` | gRPC `AuthService` | — |
 | `backend` | `branches`, `parking_slots`, `reservations`, `parking_sessions` | HTTP (vía gateway) · gRPC `ParkingService` | auth-service y payments-service (gRPC), RabbitMQ, Kafka |
 | `reservations-worker` | (mismo código que backend) | cola `reservations.requests` | igual que backend |
 | `payments-service` | `payments` | HTTP `/payments`, `/users/me/payments` (vía gateway) · gRPC `PaymentsService` | backend (gRPC, cotización), RabbitMQ |
 | `realtime-service` | — (sin base) | socket.io `/realtime` (vía gateway) | consume `realtime.events` |
 | `notifications-service` | — | tópico Kafka | SMTP |
+| `audit-service` | `audit_events` | tópico `business.audit.events` · HTTP `/audit/events` (vía gateway) | PostgreSQL propio |
 
 Las URLs públicas no cambiaron: el frontend sigue hablando solo con `:3000`. Después de editar
 cualquier `.proto` en `proto/`, correr `node scripts/sync-proto.js` para copiarlo a cada servicio
@@ -46,6 +48,11 @@ cualquier `.proto` en `proto/`, correr `node scripts/sync-proto.js` para copiarl
 El flujo de reserva es asíncrono: `POST /reservations` encola la solicitud y responde `202 { requestId }`;
 el worker la procesa y el desenlace vuelve al navegador por WebSocket (`reservation.request.resolved`).
 Ver [`docs/arquitectura-hexagonal.md`](docs/arquitectura-hexagonal.md), secciones 4 y 5.
+
+El historial de auditoría consume `reservation.created`, `reservation.cancelled` y
+`payment.registered` desde `business.audit.events`; administración consulta
+`GET /audit/events?limit=50` con un JWT de rol `ADMIN`. La persistencia es independiente y la
+publicación es best-effort en esta primera versión (sin outbox).
 
 Ver `backend/src/core/domain` para las 5 políticas de negocio (`SlotAssignmentPolicy`, `PricingPolicy`, `ReservationPolicy`, `ParkingPolicy`, `PaymentMethod`) y sus implementaciones default en `domain/policies/impl`.
 
@@ -88,9 +95,9 @@ docker compose up --build
 
 ## Observabilidad (Prometheus + Grafana)
 
-Cada servicio (gateway, auth, backend, reservations-worker, payments, realtime, notifications) expone
+Los servicios instrumentados (gateway, auth, backend, reservations-worker, payments, realtime, notifications) exponen
 `GET /metrics` con `prom-client` en su puerto interno `9464`; Prometheus los descubre por DNS (incluidas
-las réplicas de `--scale`) y también lee las colas de RabbitMQ.
+las réplicas de `--scale`) y también lee las colas de RabbitMQ. `audit-service` aún no publica métricas en esta primera versión.
 
 - Grafana: http://localhost:3100 (`admin` / `admin`) → dashboard **Smart Parking - Microservicios**, ya provisionado.
 - Prometheus: http://localhost:9090 (targets en `/targets`, alertas en `/alerts`).
