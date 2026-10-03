@@ -1,11 +1,12 @@
 import { api } from "@/lib/axios";
-import type { CreateReservationResult, Reservation } from "@/types/entities";
+import type { Reservation, ReservationRequestAccepted } from "@/types/entities";
 import type { ReservationStatus, SlotType } from "@/types/enums";
 
 export const reservationsApi = {
+  /** Encola la solicitud; responde 202 y el resultado llega por WebSocket. */
   create: (branchId: string, slotType?: SlotType, startAt?: string) =>
     api
-      .post<CreateReservationResult>("/reservations", {
+      .post<ReservationRequestAccepted>("/reservations", {
         branchId,
         slotType,
         startAt,
@@ -17,7 +18,7 @@ export const reservationsApi = {
     startAt?: string,
   ) =>
     api
-      .post<CreateReservationResult>("/reservations/confirm-suggestion", {
+      .post<ReservationRequestAccepted>("/reservations/confirm-suggestion", {
         suggestedBranchId,
         slotType,
         startAt,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
@@ -7,15 +7,29 @@ import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { branchesApi } from '@/api/branches.api';
 import { reservationsApi } from '@/api/reservations.api';
+import { useSocketEvent } from '@/hooks/useSocketEvent';
 import { notifyError, notifySuccess } from '@/lib/notify';
 import { SLOT_TYPE_LABEL } from '@/types/enums';
 import type { SlotType } from '@/types/enums';
-import type { Branch, SlotAvailabilityCount } from '@/types/entities';
+import type {
+  Branch,
+  ReservationRequestResolved,
+  SlotAvailabilityCount,
+} from '@/types/entities';
 
 interface ReservationModalProps {
   branch: Branch | null;
   onClose: () => void;
 }
+
+interface SuggestedBranch {
+  id: string;
+  name: string;
+  address: string;
+}
+
+/** Margen antes de dejar de esperar el evento del worker. */
+const RESOLUTION_TIMEOUT_MS = 20_000;
 
 export function ReservationModal({ branch, onClose }: ReservationModalProps) {
   const [availability, setAvailability] = useState<SlotAvailabilityCount[] | null>(null);
@@ -24,8 +38,24 @@ export function ReservationModal({ branch, onClose }: ReservationModalProps) {
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [suggestion, setSuggestion] = useState<{ suggestedBranch: Branch; distanceKm: number } | null>(null);
+  const [suggestion, setSuggestion] = useState<{ suggestedBranch: SuggestedBranch; distanceKm: number } | null>(
+    null,
+  );
+  // Solicitud encolada cuya resolucion todavia se espera por WebSocket.
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const timeoutRef = useRef<number | null>(null);
   const navigate = useNavigate();
+
+  const stopWaiting = useCallback(() => {
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setPendingRequestId(null);
+    setSubmitting(false);
+  }, []);
+
+  useEffect(() => stopWaiting, [stopWaiting]);
 
   useEffect(() => {
     if (!branch) return;
@@ -34,17 +64,43 @@ export function ReservationModal({ branch, onClose }: ReservationModalProps) {
     setStartDate('');
     setStartTime('');
     setSuggestion(null);
+    stopWaiting();
     branchesApi
       .availability(branch.id)
       .then((result) => setAvailability(result.availability))
       .catch((error) => notifyError(error));
-  }, [branch]);
+  }, [branch, stopWaiting]);
+
+  // El worker resuelve la solicitud fuera del request HTTP; el desenlace
+  // vuelve por este evento, filtrado por el requestId que devolvio el 202.
+  useSocketEvent<ReservationRequestResolved>('reservation.request.resolved', (payload) => {
+    if (!pendingRequestId || payload.requestId !== pendingRequestId) return;
+
+    stopWaiting();
+
+    if (payload.status === 'CREATED') {
+      notifySuccess('Reserva creada. Tienes 20 minutos para hacer check-in.');
+      onClose();
+      navigate('/mi-reserva');
+      return;
+    }
+
+    if (payload.status === 'SUGGEST_OTHER_BRANCH' && payload.suggestedBranch) {
+      setSuggestion({
+        suggestedBranch: payload.suggestedBranch,
+        distanceKm: payload.distanceKm ?? 0,
+      });
+      return;
+    }
+
+    notifyError(new Error(payload.message ?? 'No se pudo crear la reserva.'));
+  });
 
   if (!branch) return null;
 
   async function handleConfirm(targetBranchId: string, isSuggestion: boolean) {
     if (reservationMode === 'SCHEDULED' && (!startDate || !startTime)) {
-      notifyError('Selecciona tanto la fecha como la hora de inicio.');
+      notifyError(new Error('Selecciona tanto la fecha como la hora de inicio.'));
       return;
     }
 
@@ -54,22 +110,22 @@ export function ReservationModal({ branch, onClose }: ReservationModalProps) {
         reservationMode === 'SCHEDULED' && startDate && startTime
           ? new Date(`${startDate}T${startTime}`).toISOString()
           : undefined;
-      const result = isSuggestion
+      const accepted = isSuggestion
         ? await reservationsApi.confirmSuggestion(targetBranchId, slotType || undefined, startAt)
         : await reservationsApi.create(targetBranchId, slotType || undefined, startAt);
 
-      if (result.outcome === 'CREATED') {
-        notifySuccess('Reserva creada. Tienes 20 minutos para hacer check-in.');
-        onClose();
-        navigate('/mi-reserva');
-        return;
-      }
-
-      setSuggestion({ suggestedBranch: result.suggestedBranch, distanceKm: result.distanceKm });
+      // 202: la solicitud esta en la cola. Se sigue esperando hasta que el
+      // worker la procese y llegue `reservation.request.resolved`.
+      setPendingRequestId(accepted.requestId);
+      timeoutRef.current = window.setTimeout(() => {
+        stopWaiting();
+        notifyError(
+          new Error('Tu solicitud sigue en cola. Revisa "Mi reserva" en unos segundos.'),
+        );
+      }, RESOLUTION_TIMEOUT_MS);
     } catch (error) {
-      notifyError(error);
-    } finally {
       setSubmitting(false);
+      notifyError(error);
     }
   }
 
@@ -172,8 +228,15 @@ export function ReservationModal({ branch, onClose }: ReservationModalProps) {
               : 'Selecciona fecha y hora para programar la reserva.'}
           </p>
 
+          {pendingRequestId && (
+            <p className="-mt-2 flex items-center gap-2 font-mono text-xs text-signal-yellow-600">
+              <Spinner />
+              Solicitud en cola, procesando…
+            </p>
+          )}
+
           <Button loading={submitting} disabled={!availability} onClick={() => handleConfirm(branch.id, false)}>
-            Confirmar reserva
+            {pendingRequestId ? 'Procesando…' : 'Confirmar reserva'}
           </Button>
         </div>
       )}

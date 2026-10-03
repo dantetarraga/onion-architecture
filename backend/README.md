@@ -1,98 +1,157 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# backend — núcleo de estacionamiento
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Estado del backend después de la migración a microservicios (auth-service, payments-service y
+realtime-service ya extraídos). Lo que queda aquí es el **núcleo transaccional del negocio**:
+sucursales, cocheras, reservas y sesiones de estacionamiento, junto con la tarifa. Estas piezas
+se quedan juntas a propósito (ver [Por qué no se separa más](#por-qué-no-se-separa-más)). La vista de
+todos los servicios está en [`docs/arquitectura-microservicios.md`](../docs/arquitectura-microservicios.md).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Qué hace hoy y qué ya no
 
-## Description
+| Responsabilidad | Dónde vive |
+|---|---|
+| Sucursales, cocheras, disponibilidad y ocupación | **backend** |
+| Reservas (cola asíncrona con RabbitMQ + worker), cancelación y expiración | **backend** |
+| Ingreso y salida con QR, sesiones de estacionamiento | **backend** |
+| Tarifa (`PricingPolicy`) y `GET /parking/sessions/:id/amount` | **backend** |
+| Panel de admin: ocupación, simular sucursal llena, expirar ahora | **backend** |
+| Reporte de ingresos (`GET /admin/reports/revenue`) | **backend**, con montos pedidos a payments-service por gRPC |
+| Correo de confirmación de reserva | backend publica en Kafka → `notifications-service` envía |
+| Usuarios, login (local/Google/Facebook), MFA, emisión de JWT | ~~backend~~ → `auth-service` |
+| Cobro, persistencia de pagos, `/payments`, `/users/me/payments` | ~~backend~~ → `payments-service` |
+| socket.io (`/realtime`) | ~~backend~~ → `realtime-service` (backend solo publica eventos) |
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Backend **no tiene puerto público**. Todo el tráfico del navegador llega por el `gateway` (:3000);
+en Docker, backend solo se expone en `127.0.0.1:3001` para depurar.
 
-## Project setup
+## Procesos
 
-```bash
-$ npm install
+El mismo build corre como dos procesos:
+
+| Proceso | Entrypoint | Qué levanta |
+|---|---|---|
+| API (`backend`) | `src/bootstrap/main.ts` | HTTP :3001 (REST + Swagger en `/docs`), gRPC :50053 (`ParkingService`) y el scheduler de expiración de reservas |
+| Worker (`reservations-worker`) | `src/bootstrap/worker-main.ts` | Consumidor de la cola `reservations.requests` (sin HTTP, sin gRPC entrante, sin scheduler). Se puede escalar: `--scale reservations-worker=3` |
+
+## Cómo se comunica con el resto
+
+```
+                     HTTP (proxy por path)
+   gateway ───────────────────────────────────────►  backend  (:3001)
+                                                        │
+   payments-service ──── gRPC ParkingService ─────────► │  (:50053) cotización de una sesión
+                                                        │
+   backend ──── gRPC AuthService.GetUserById ─────────► auth-service       (email para el correo)
+   backend ──── gRPC PaymentsService ─────────────────► payments-service   (¿sesión pagada? · ingresos)
+   backend ──── RabbitMQ reservations.requests ───────► reservations-worker
+   backend ──── RabbitMQ realtime.events (fanout) ────► realtime-service ──► navegadores
+   backend ──── Kafka notifications.email.confirmation ► notifications-service
 ```
 
-## Compile and run the project
+### Entrante
+- **HTTP (vía gateway):** `/branches/*`, `/reservations/*`, `/parking/*`, `/admin/*`,
+  `/users/me/reservations`, `/users/me/sessions`. Cada request vuelve a verificar el JWT RS256
+  localmente con `JWT_PUBLIC_KEY` (defensa en profundidad; backend nunca firma tokens).
+- **gRPC `ParkingService.GetSessionQuote`** (`proto/parking.proto`): payments-service lo llama
+  antes de cobrar para saber de quién es la sesión, en qué sucursal está y cuánto cuesta ahora.
+  No valida dueño (el llamador es interno); payments-service compara `userId` con el del token.
+- **RabbitMQ `reservations.requests`:** solo lo consume el worker.
 
-```bash
-# development
-$ npm run start
+### Saliente
+- **gRPC → auth-service** (`AuthGrpcModule`, puerto `USER_LOOKUP`): email y nombre del usuario
+  para el evento del correo de confirmación.
+- **gRPC → payments-service** (`PaymentsGrpcModule`, puerto `PAYMENT_LOOKUP`):
+  - `GetPaymentBySession`: `RegisterExitUseCase` y `DefaultParkingPolicy` no liberan la cochera
+    si la sesión no tiene un pago aprobado que cubra la tarifa (con tolerancia por sobre-estadía).
+  - `SumApprovedByBranch`: una sola llamada para todas las sucursales del reporte de ingresos.
+  - Si payments-service no responde (timeout de 5 s) se lanza `PaymentServiceUnavailableError`
+    → **503**. Nunca se decide una salida "a ciegas".
+- **RabbitMQ `realtime.events`** (`RealtimeModule` → `RabbitRealtimePublisherAdapter`, igual en API
+  y worker): cada evento viaja como `{ event, target, payload }`, con `target` de tipo
+  `branch`, `user` o `admin`. La ocupación de la sucursal se calcula aquí y viaja ya resuelta
+  (realtime-service no tiene base de datos). Si RabbitMQ falla se loguea y la operación de negocio
+  sigue su curso.
+- **Kafka `notifications.email.confirmation`:** confirmación de reserva. También es
+  fire-and-forget.
 
-# watch mode
-$ npm run start:dev
+Los `.proto` que usa backend (`proto/auth.proto`, `proto/payments.proto`, `proto/parking.proto`)
+son copias de la raíz del repo. Se regeneran con `node scripts/sync-proto.js`, sin editarlas aquí.
 
-# production mode
-$ npm run start:prod
+## Datos
+
+Base `smart_parking` (servicio `postgres`), de uso exclusivo de backend:
+
+```
+Branch ──< ParkingSlot ──< Reservation ──1 ParkingSession
+                     └──────────────────────< ParkingSession
 ```
 
-## Run tests
+- `userId` en `reservations` y `parking_sessions` es un id opaco del usuario en auth-service
+  (no hay FK entre bases distintas).
+- La tabla `payments` ya no existe aquí: la migración `20260925000000_split_payments_service` la
+  elimina. **No copia los datos**: si una base tiene pagos que importan, hay que exportarlos a
+  payments-service antes de aplicarla (ver el comentario en la migración).
+- El seed (`prisma/seed.ts`) crea 3 sucursales con sus cocheras. Los usuarios se siembran en
+  auth-service; los pagos no tienen seed.
 
-```bash
-# unit tests
-$ npm run test
+## Estructura (hexagonal)
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```
+src/
+├── core/                        # sin dependencias de infraestructura
+│   ├── domain/                  # entidades, enums, errores, políticas (1 asignación · 2 reservas ·
+│   │                            #   4 tarifa · 5-6 ingreso/salida) e implementaciones en policies/impl
+│   ├── application/use-cases/   # admin · branches · parking · payments (solo calculate-amount) · reservations
+│   └── ports/
+│       ├── in/                  # un puerto por caso de uso + tokens
+│       └── out/                 # repositorios, clock, qr, realtime, colas, user-lookup, payment-lookup
+├── adapters/
+│   ├── in/   http · grpc (ParkingGrpcController) · messaging (consumidor de reservas) · scheduler
+│   └── out/  persistence/prisma · auth (verificador RS256, cliente gRPC auth) ·
+│             payments (cliente gRPC payments) · realtime (publicador RabbitMQ) ·
+│             messaging (RabbitMQ, Kafka) · qr · clock
+└── bootstrap/                   # módulos Nest: main.ts (API) y worker-main.ts (worker)
 ```
 
-## Deployment
+`core/domain/entities/payment.entity.ts` se conserva solo como **vista de lectura** de lo que
+devuelve payments-service (backend ya no crea ni modifica pagos).
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Variables de entorno
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+| Variable | Uso | En docker-compose |
+|---|---|---|
+| `DATABASE_URL` | base `smart_parking` | `postgres:5432` |
+| `PORT` / `GRPC_PORT` | HTTP / gRPC entrante (solo API) | `3001` / `50053` |
+| `JWT_PUBLIC_KEY` | verificar el JWT RS256 (API y worker) | desde `.env` |
+| `AUTH_SERVICE_GRPC_URL` | cliente gRPC → auth-service | `auth-service:50051` |
+| `PAYMENTS_SERVICE_GRPC_URL` | cliente gRPC → payments-service | `payments-service:50052` |
+| `RABBITMQ_URL`, `RABBITMQ_REALTIME_EXCHANGE`, `RABBITMQ_PREFETCH` | cola de reservas y eventos de tiempo real | `rabbitmq:5672`, `realtime.events`, `1` |
+| `KAFKA_BROKERS`, `KAFKA_NOTIFICATIONS_TOPIC` | correo de confirmación | `kafka:9092` |
+| `RESERVATION_TOLERANCE_MINUTES`, `SLOT_ASSIGNMENT_STRATEGY` | políticas 2 y 1 | `20`, `default` |
+
+## Correr en local
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Infra de desarrollo: Postgres (negocio y pagos), Kafka, RabbitMQ
+docker compose -f docker-compose.dev.yml up -d
+
+npm install
+npx prisma migrate dev
+npx prisma db seed
+npm run start:dev          # API: http://localhost:3001 (Swagger en /docs), gRPC en :50053
+npm run start:worker:dev   # worker (otra terminal)
+npm test
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Para los flujos completos (login, pagos, sockets) hacen falta auth-service, payments-service,
+realtime-service y gateway. Lo más simple es levantar toda la pila desde la raíz con
+`docker compose up --build`.
 
-## Resources
+## Por qué no se separa más
 
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Sucursales, cocheras, reservas y sesiones cambian juntas en operaciones que tienen que ser
+atómicas: reclamar una cochera libre al reservar (`claimAvailableSlot`), marcarla ocupada al
+entrar, liberarla al salir o al expirar la reserva. Separarlas en servicios distintos obligaría a
+coordinar cada flujo con sagas y compensaciones, mucha complejidad para muy poco beneficio. Si
+más adelante hiciera falta, el corte más limpio sería un catálogo de sucursales y tarifas de solo
+lectura.

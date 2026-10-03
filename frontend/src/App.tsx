@@ -5,6 +5,8 @@ import { AdminRoute } from '@/routes/AdminRoute';
 import { GuestRoute } from '@/routes/GuestRoute';
 import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
+import { MfaChallengePage } from '@/pages/MfaChallengePage';
+import { SecurityPage } from '@/pages/security/SecurityPage';
 import { BranchesPage } from '@/pages/branches/BranchesPage';
 import { MyReservationPage } from '@/pages/reservation/MyReservationPage';
 import { AdminPage } from '@/pages/admin/AdminPage';
@@ -16,12 +18,14 @@ function App() {
       <Route element={<GuestRoute />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/mfa" element={<MfaChallengePage />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/sucursales" element={<BranchesPage />} />
           <Route path="/mi-reserva" element={<MyReservationPage />} />
+          <Route path="/seguridad" element={<SecurityPage />} />
           <Route element={<AdminRoute />}>
             <Route path="/admin" element={<AdminPage />} />
           </Route>

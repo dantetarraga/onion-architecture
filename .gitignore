@@ -1,0 +1,13 @@
+# Variables de entorno con secretos - nunca a version control.
+# Usar .env.example como plantilla.
+.env
+.env.local
+notifications-service/.env
+
+# Dependencias y build artifacts (cada subproyecto tiene ademas su propio
+# .gitignore para lo especifico de Nest/Vite; esto cubre el nuevo
+# notifications-service y cosas que quedan sueltas en la raiz).
+node_modules/
+notifications-service/node_modules/
+notifications-service/dist/
+backend/coverage/

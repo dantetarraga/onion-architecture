@@ -1,0 +1,8 @@
+export const CLOCK = Symbol('CLOCK');
+export const PUBLIC_KEY_VERIFIER = Symbol('PUBLIC_KEY_VERIFIER');
+export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
+export const PAYMENT_METHOD = Symbol('PAYMENT_METHOD');
+export const SESSION_BILLING = Symbol('SESSION_BILLING');
+export const PAYMENT_EVENTS = Symbol('PAYMENT_EVENTS');
+export const AUDIT_EVENT_PUBLISHER = Symbol('AUDIT_EVENT_PUBLISHER');
+export const PARKING_GRPC_CLIENT = Symbol('PARKING_GRPC_CLIENT');

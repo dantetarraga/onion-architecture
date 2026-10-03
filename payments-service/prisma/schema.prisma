@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Base propia de payments-service (payments-postgres). No hay FK
+// cross-database posible: sessionId, userId y branchId son ids opacos que
+// pertenecen a backend (sesiones/sucursales) y auth-service (usuarios).
+model Payment {
+  id                String        @id @default(uuid())
+  sessionId         String        @unique
+  userId            String
+  branchId          String
+  amount            Decimal       @db.Decimal(10, 2)
+  status            PaymentStatus @default(PENDING)
+  externalReference String?
+  paidAt            DateTime?
+  createdAt         DateTime      @default(now())
+
+  @@index([userId])
+  @@index([branchId, status, createdAt])
+  @@map("payments")
+}

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package parking.payments.v1;
+
+// Contrato interno de `payments-service` (servidor). Su unico cliente es
+// `backend` (API + reservations-worker): la salida de la cochera necesita
+// saber si la sesion esta pagada, y el reporte de ingresos del admin necesita
+// los montos aprobados por sucursal. El trafico publico de pagos
+// (POST /payments, GET /payments/:id, GET /users/me/payments) no pasa por
+// aca: entra por HTTP desde `gateway`.
+//
+// Fuente unica: proto/payments.proto. Las copias en <servicio>/proto/ se
+// regeneran con `node scripts/sync-proto.js` (ver ese script).
+service PaymentsService {
+  rpc GetPaymentBySession(GetPaymentBySessionRequest) returns (GetPaymentBySessionReply);
+  rpc SumApprovedByBranch(SumApprovedByBranchRequest) returns (SumApprovedByBranchReply);
+}
+
+message GetPaymentBySessionRequest { string session_id = 1; }
+
+message PaymentReply {
+  string id = 1;
+  string session_id = 2;
+  string user_id = 3;
+  string branch_id = 4;
+  double amount = 5;
+  string status = 6;
+  string external_reference = 7;
+  string paid_at = 8;
+  string created_at = 9;
+}
+
+// `found:false` en vez de NOT_FOUND: que una sesion todavia no tenga pago es
+// un resultado normal de negocio, no un error de transporte.
+message GetPaymentBySessionReply {
+  bool found = 1;
+  PaymentReply payment = 2;
+}
+
+// `from`/`to` en ISO-8601; vacio = sin limite.
+message SumApprovedByBranchRequest {
+  repeated string branch_ids = 1;
+  string from = 2;
+  string to = 3;
+}
+
+message BranchRevenue {
+  string branch_id = 1;
+  double total = 2;
+}
+
+message SumApprovedByBranchReply { repeated BranchRevenue rows = 1; }

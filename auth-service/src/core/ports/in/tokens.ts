@@ -1,0 +1,9 @@
+export const REGISTER_USER = Symbol('REGISTER_USER');
+export const LOGIN_USER = Symbol('LOGIN_USER');
+export const LOGIN_WITH_GOOGLE = Symbol('LOGIN_WITH_GOOGLE');
+export const LOGIN_WITH_FACEBOOK = Symbol('LOGIN_WITH_FACEBOOK');
+export const SETUP_MFA = Symbol('SETUP_MFA');
+export const CONFIRM_MFA = Symbol('CONFIRM_MFA');
+export const VERIFY_MFA = Symbol('VERIFY_MFA');
+export const DISABLE_MFA = Symbol('DISABLE_MFA');
+export const GET_CURRENT_USER = Symbol('GET_CURRENT_USER');

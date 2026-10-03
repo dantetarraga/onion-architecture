@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package parking.core.v1;
+
+// Contrato interno de `backend` (servidor gRPC, ademas de su API HTTP). Su
+// cliente es `payments-service`: para cobrar una sesion necesita saber de quien
+// es, en que sucursal esta y cuanto cuesta hasta ahora. La tarifa
+// (PricingPolicy) se queda en backend porque depende de datos de la sucursal
+// (pricePerHour); payments-service solo pide la cotizacion ya calculada.
+//
+// Fuente unica: proto/parking.proto. Las copias en <servicio>/proto/ se
+// regeneran con `node scripts/sync-proto.js` (ver ese script).
+service ParkingService {
+  rpc GetSessionQuote(GetSessionQuoteRequest) returns (SessionQuoteReply);
+}
+
+message GetSessionQuoteRequest { string session_id = 1; }
+
+message PricingBreakdownItem {
+  string label = 1;
+  double amount = 2;
+}
+
+message SessionQuoteReply {
+  string session_id = 1;
+  string user_id = 2;
+  string branch_id = 3;
+  bool active = 4;
+  double amount = 5;
+  string currency = 6;
+  repeated PricingBreakdownItem breakdown = 7;
+}

@@ -16,6 +16,224 @@ services:
       timeout: 5s
       retries: 10
 
+  # Base de datos propia de auth-service: aislamiento real, separada de la
+  # base de negocio (`postgres`/smart_parking). No hay FK cross-database
+  # posible, por eso Reservation/ParkingSession/Payment solo guardan un
+  # userId opaco y ya no una relacion Prisma hacia User.
+  auth-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUTH_POSTGRES_USER:-auth}
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD:-auth}
+      POSTGRES_DB: ${AUTH_POSTGRES_DB:-auth_db}
+    ports:
+      - "${AUTH_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_POSTGRES_USER:-auth} -d ${AUTH_POSTGRES_DB:-auth_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Base de datos propia de payments-service (mismo criterio que auth-postgres):
+  # ningun otro servicio tiene acceso. payments guarda sessionId/userId/branchId
+  # como ids opacos, sin FK hacia la base de negocio.
+  payments-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PAYMENTS_POSTGRES_USER:-payments}
+      POSTGRES_PASSWORD: ${PAYMENTS_POSTGRES_PASSWORD:-payments}
+      POSTGRES_DB: ${PAYMENTS_POSTGRES_DB:-payments_db}
+    ports:
+      - "${PAYMENTS_POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - payments-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAYMENTS_POSTGRES_USER:-payments} -d ${PAYMENTS_POSTGRES_DB:-payments_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  audit-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUDIT_POSTGRES_USER:-audit}
+      POSTGRES_PASSWORD: ${AUDIT_POSTGRES_PASSWORD:-audit}
+      POSTGRES_DB: ${AUDIT_POSTGRES_DB:-audit_db}
+    ports:
+      - "${AUDIT_POSTGRES_PORT:-5436}:5432"
+    volumes:
+      - audit-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUDIT_POSTGRES_USER:-audit} -d ${AUDIT_POSTGRES_DB:-audit_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.7.0
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,PLAINTEXT_HOST://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:${KAFKA_HOST_PORT:-29092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "${KAFKA_HOST_PORT:-29092}:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # UI web para inspeccionar topicos/mensajes durante la demo (http://localhost:8080).
+  # No es requerido por el backend, solo ayuda a verificar visualmente que el evento
+  # de confirmacion de reserva llega a la cola antes de que lo consuma el servicio de notificaciones.
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8080:8080"
+
+  # UI web para inspeccionar la cola de solicitudes de reserva durante la demo
+  # (http://localhost:15672, usuario/clave parking/parking). Ahi se ve el mensaje
+  # que publica POST /reservations, su DLQ y las tasas de deliver/ack del worker.
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-parking}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-parking}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # Microservicio de autenticacion: JWT local, Google (Firebase), Facebook y
+  # MFA TOTP. Dueño exclusivo de la tabla User (base de datos propia,
+  # auth-postgres) y de la clave privada RS256. Expone gRPC (AuthService, ver
+  # proto/auth.proto) y un health check HTTP; no tiene puerto publico.
+  auth-service:
+    build:
+      context: ./auth-service
+    restart: unless-stopped
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${AUTH_POSTGRES_USER:-auth}:${AUTH_POSTGRES_PASSWORD:-auth}@auth-postgres:5432/${AUTH_POSTGRES_DB:-auth_db}?schema=public
+      PORT: 3010
+      GRPC_PORT: 50051
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      MFA_CHALLENGE_EXPIRES_IN: ${MFA_CHALLENGE_EXPIRES_IN:-5m}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-hdlizana}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
+      FACEBOOK_GRAPH_VERSION: ${FACEBOOK_GRAPH_VERSION:-v21.0}
+    command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/bootstrap/main.js"
+
+  # Microservicio de pagos: cobro por metodo (mock de efectivo/tarjeta/Yape/
+  # Plin), dueño exclusivo de la tabla payments (base propia). Dos entradas:
+  # HTTP para el navegador (gateway le enruta /payments y /users/me/payments)
+  # y gRPC para backend (PaymentsService, ver proto/payments.proto). Pide la
+  # cotizacion de la sesion a backend por gRPC (ParkingService) y publica
+  # `payment.registered` en RabbitMQ para el dashboard en tiempo real.
+  payments-service:
+    build:
+      context: ./payments-service
+    restart: unless-stopped
+    depends_on:
+      payments-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${PAYMENTS_POSTGRES_USER:-payments}:${PAYMENTS_POSTGRES_PASSWORD:-payments}@payments-postgres:5432/${PAYMENTS_POSTGRES_DB:-payments_db}?schema=public
+      PORT: 3020
+      GRPC_PORT: 50052
+      PARKING_SERVICE_GRPC_URL: backend:50053
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: payments-service
+      KAFKA_AUDIT_TOPIC: ${KAFKA_AUDIT_TOPIC:-business.audit.events}
+    command: sh -c "npx prisma migrate deploy && node dist/src/bootstrap/main.js"
+
+  # Servicio de tiempo real: el socket.io (namespace /realtime) que antes vivia
+  # dentro de backend. Sin base de datos ni dominio: consume el exchange
+  # fanout `realtime.events` (lo publican backend, reservations-worker y
+  # payments-service) y reemite cada evento a sus salas. Escala horizontal:
+  # cada instancia tiene su propia cola exclusiva (`--scale realtime-service=2`).
+  realtime-service:
+    build:
+      context: ./realtime-service
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      PORT: 3030
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
+
+  # Gateway publico: unico servicio con el puerto 3000. El frontend no cambia
+  # ni de URL ni de contrato REST. Auth se resuelve via gRPC contra
+  # auth-service (JwtAuthGuard verifica RS256 localmente, sin llamar por red
+  # en cada request); pagos van por HTTP a `payments-service`, el socket.io
+  # (/socket.io, HTTP + upgrade) a `realtime-service` y todo lo demas a `backend`.
+  gateway:
+    build:
+      context: ./gateway
+    restart: unless-stopped
+    depends_on:
+      - auth-service
+      - backend
+      - payments-service
+      - realtime-service
+      - audit-service
+    environment:
+      PORT: 3000
+      AUTH_SERVICE_GRPC_URL: auth-service:50051
+      BACKEND_INTERNAL_URL: http://backend:3001
+      PAYMENTS_INTERNAL_URL: http://payments-service:3020
+      REALTIME_INTERNAL_URL: http://realtime-service:3030
+      AUDIT_INTERNAL_URL: http://audit-service:3040
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    ports:
+      - "3000:3000"
+
   backend:
     build:
       context: ./backend
@@ -23,28 +241,185 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
-      PORT: 3000
-      JWT_SECRET: ${JWT_SECRET:-change-this-dev-secret-key-min-32-chars}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      PORT: 3001
+      SERVICE_NAME: backend
+      # Defensa en profundidad: backend verifica el mismo JWT (RS256) que ya
+      # valido gateway, localmente, sin llamar a auth-service. Solo necesita
+      # la clave publica, nunca la privada.
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      # Unico uso de gRPC hacia auth-service que no es validacion de token:
+      # CreateReservationUseCase pide email/fullName reales para el correo
+      # de confirmacion de reserva (evento Kafka).
+      AUTH_SERVICE_GRPC_URL: auth-service:50051
+      # Salida de cochera (sesion pagada?) y reporte de ingresos: via gRPC.
+      PAYMENTS_SERVICE_GRPC_URL: payments-service:50052
+      # Entrada gRPC propia (ParkingService): payments-service cotiza sesiones aca.
+      GRPC_PORT: 50053
       RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}
+      KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
+      KAFKA_AUDIT_TOPIC: ${KAFKA_AUDIT_TOPIC:-business.audit.events}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
     ports:
-      - "3000:3000"
-    command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/main.js"
+      # Sin exponer publicamente (el gateway es la unica puerta de entrada);
+      # solo en localhost para poder curl/debuggear backend directo durante la demo.
+      - "127.0.0.1:3001:3001"
+    command: sh -c "npx prisma migrate deploy && node dist/prisma/seed.js && node dist/src/bootstrap/main.js"
+
+  # Worker de reservas: mismo build que `backend`, pero en vez de servir HTTP
+  # consume la cola `reservations.requests` y ejecuta CreateReservationUseCase.
+  # Se puede apagar (`docker compose stop reservations-worker`) para ver las
+  # solicitudes acumularse en RabbitMQ, y escalar (`--scale reservations-worker=3`)
+  # para demostrar competing consumers.
+  reservations-worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-parking}:${POSTGRES_PASSWORD:-parking}@postgres:5432/${POSTGRES_DB:-smart_parking}?schema=public
+      SERVICE_NAME: reservations-worker
+      RESERVATION_TOLERANCE_MINUTES: ${RESERVATION_TOLERANCE_MINUTES:-20}
+      SLOT_ASSIGNMENT_STRATEGY: ${SLOT_ASSIGNMENT_STRATEGY:-default}
+      AUTH_SERVICE_GRPC_URL: auth-service:50051
+      PAYMENTS_SERVICE_GRPC_URL: payments-service:50052
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-smart-parking-backend}-worker
+      KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
+      KAFKA_AUDIT_TOPIC: ${KAFKA_AUDIT_TOPIC:-business.audit.events}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-parking}:${RABBITMQ_PASSWORD:-parking}@rabbitmq:5672
+      RABBITMQ_REALTIME_EXCHANGE: ${RABBITMQ_REALTIME_EXCHANGE:-realtime.events}
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-1}
+    command: node dist/src/bootstrap/worker-main.js
+
+  # Servicio aislado: consume el topico de confirmacion de reservas y manda
+  # el correo. No comparte codigo ni proceso con `backend`, solo el contrato
+  # del evento (ver notifications-service/src/types.ts) y el topico de Kafka.
+  notifications-service:
+    build:
+      context: ./notifications-service
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: notifications-service
+      KAFKA_NOTIFICATIONS_TOPIC: ${KAFKA_NOTIFICATIONS_TOPIC:-notifications.email.confirmation}
+      KAFKA_CONSUMER_GROUP: notifications-service
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      MAIL_HOST: ${MAIL_HOST:-mail.motoya.com.pe}
+      MAIL_PORT: ${MAIL_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM_EMAIL: ${MAIL_FROM_EMAIL:-notificaciones@motoya.com.pe}
+
+  audit-service:
+    build:
+      context: ./audit-service
+    restart: unless-stopped
+    depends_on:
+      audit-postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      PORT: 3040
+      DATABASE_URL: postgresql://${AUDIT_POSTGRES_USER:-audit}:${AUDIT_POSTGRES_PASSWORD:-audit}@audit-postgres:5432/${AUDIT_POSTGRES_DB:-audit_db}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: audit-service
+      KAFKA_AUDIT_TOPIC: ${KAFKA_AUDIT_TOPIC:-business.audit.events}
+      KAFKA_CONSUMER_GROUP: audit-service
 
   frontend:
     build:
       context: ./frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      - gateway
     environment:
+      # Sigue apuntando a :3000 - ahora lo sirve `gateway`, no `backend`. El
+      # frontend no cambia ni una linea (el socket.io tambien entra por :3000 y
+      # gateway lo reenvia a realtime-service).
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
       VITE_WS_URL: ${VITE_WS_URL:-http://localhost:3000}
+      # Config publica del proyecto Firebase (login con Google). El apiKey de
+      # Firebase Web es publico por diseño, se restringe por dominio en la
+      # consola; el projectId debe coincidir con FIREBASE_PROJECT_ID de auth-service.
+      VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-AIzaSyBNylqVfSm9_ofvWAlj3DyIgcGncUsR6-k}
+      VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-hdlizana.firebaseapp.com}
+      VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-hdlizana}
+      VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-hdlizana.firebasestorage.app}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-149047439285}
+      VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-1:149047439285:web:abafa15413f3f48be333fc}
+      VITE_FACEBOOK_APP_ID: ${VITE_FACEBOOK_APP_ID}
+      VITE_FACEBOOK_GRAPH_VERSION: ${VITE_FACEBOOK_GRAPH_VERSION:-v21.0}
     ports:
       - "5173:5173"
 
+  # Observabilidad. Cada servicio Node expone GET /metrics (prom-client) en
+  # su puerto interno 9464, sin publicarlo al host; Prometheus los descubre por
+  # DNS (incluidas las replicas de --scale) y Grafana grafica desde Prometheus.
+  # Config en observability/: prometheus.yml (scrape), alerts.yml (reglas) y el
+  # datasource + dashboard de Grafana ya provisionados.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  # http://localhost:3100 (admin/admin por defecto). Datasource y dashboard
+  # "Smart Parking - Microservicios" se cargan solos al arrancar.
+  grafana:
+    image: grafana/grafana:12.1.1
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/smart-parking-overview.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3100}:3000"
+
 volumes:
   postgres-data:
+  auth-postgres-data:
+  payments-postgres-data:
+  audit-postgres-data:
+  prometheus-data:
+  grafana-data:

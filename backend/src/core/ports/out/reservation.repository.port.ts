@@ -1,0 +1,30 @@
+import { Reservation } from '../../domain/entities/reservation.entity';
+import { ReservationStatus } from '../../domain/enums/reservation-status.enum';
+
+export interface CreateReservationData {
+  userId: string;
+  branchId: string;
+  slotId: string;
+  requestedType: import('../../domain/enums/slot-type.enum').SlotType;
+  startAt: Date;
+  expiresAt: Date;
+}
+
+export interface ReservationListFilters {
+  branchId?: string;
+  status?: ReservationStatus;
+}
+
+export interface ReservationRepositoryPort {
+  findById(id: string): Promise<Reservation | null>;
+  findActiveByUser(userId: string): Promise<Reservation | null>;
+  findExpiredPending(now: Date): Promise<Reservation[]>;
+  create(data: CreateReservationData): Promise<Reservation>;
+  updateStatus(
+    id: string,
+    status: ReservationStatus,
+    confirmedAt?: Date,
+  ): Promise<void>;
+  listByUser(userId: string): Promise<Reservation[]>;
+  listByFilters(filters: ReservationListFilters): Promise<Reservation[]>;
+}

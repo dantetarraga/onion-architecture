@@ -12,11 +12,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  USER
-  ADMIN
-}
-
 enum SlotType {
   REGULAR
   MOTO
@@ -42,26 +37,6 @@ enum ReservationStatus {
 enum SessionStatus {
   ACTIVE
   COMPLETED
-}
-
-enum PaymentStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-model User {
-  id           String           @id @default(uuid())
-  email        String           @unique
-  passwordHash String
-  fullName     String
-  role         Role             @default(USER)
-  reservations Reservation[]
-  sessions     ParkingSession[]
-  payments     Payment[]
-  createdAt    DateTime         @default(now())
-
-  @@map("users")
 }
 
 model Branch {
@@ -96,8 +71,9 @@ model ParkingSlot {
 
 model Reservation {
   id            String            @id @default(uuid())
+  // El propietario del recurso vive en auth-service (base de datos separada,
+  // sin FK cross-database posible): userId es un id opaco desde aqui.
   userId        String
-  user          User              @relation(fields: [userId], references: [id])
   branchId      String
   branch        Branch            @relation(fields: [branchId], references: [id])
   slotId        String
@@ -120,29 +96,12 @@ model ParkingSession {
   reservationId String        @unique
   reservation   Reservation   @relation(fields: [reservationId], references: [id])
   userId        String
-  user          User          @relation(fields: [userId], references: [id])
   slotId        String
   slot          ParkingSlot   @relation(fields: [slotId], references: [id])
   status        SessionStatus @default(ACTIVE)
   entryAt       DateTime      @default(now())
   exitAt        DateTime?
-  payment       Payment?
 
   @@index([userId, status])
   @@map("parking_sessions")
-}
-
-model Payment {
-  id                String         @id @default(uuid())
-  sessionId         String         @unique
-  session           ParkingSession @relation(fields: [sessionId], references: [id])
-  userId            String
-  user              User           @relation(fields: [userId], references: [id])
-  amount            Decimal        @db.Decimal(10, 2)
-  status            PaymentStatus  @default(PENDING)
-  externalReference String?
-  paidAt            DateTime?
-  createdAt         DateTime       @default(now())
-
-  @@map("payments")
 }

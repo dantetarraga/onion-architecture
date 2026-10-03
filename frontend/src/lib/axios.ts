@@ -17,8 +17,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiErrorBody>) => {
-    const isLoginRequest = error.config?.url?.includes('/auth/login');
-    if (error.response?.status === 401 && !isLoginRequest) {
+    const isAuthRequest = error.config?.url?.includes('/auth/');
+    if (error.response?.status === 401 && !isAuthRequest) {
       useAuthStore.getState().logout();
     }
 

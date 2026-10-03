@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package parking.auth.v1;
+
+// Contrato canonico entre `gateway`/`backend` (clientes) y `auth-service`
+// (servidor). Cada servicio mantiene una copia sincronizada en su propia
+// carpeta `proto/` (ver scripts/sync-proto.js) para que el build context de
+// cada Dockerfile siga siendo autocontenido, igual que notifications-service.
+service AuthService {
+  rpc Register(RegisterRequest) returns (UserReply);
+  rpc Login(LoginRequest) returns (LoginReply);
+  rpc LoginWithGoogle(LoginWithGoogleRequest) returns (LoginReply);
+  rpc LoginWithFacebook(LoginWithFacebookRequest) returns (LoginReply);
+  rpc VerifyMfa(VerifyMfaRequest) returns (LoginReply);
+  rpc SetupMfa(SetupMfaRequest) returns (SetupMfaReply);
+  rpc ConfirmMfa(ConfirmMfaRequest) returns (ConfirmMfaReply);
+  rpc DisableMfa(DisableMfaRequest) returns (DisableMfaReply);
+  rpc GetUserById(GetUserByIdRequest) returns (UserReply);
+}
+
+message RegisterRequest          { string email = 1; string password = 2; string full_name = 3; }
+message LoginRequest             { string email = 1; string password = 2; }
+message LoginWithGoogleRequest   { string id_token = 1; }
+message LoginWithFacebookRequest { string access_token = 1; }
+message VerifyMfaRequest         { string mfa_token = 1; string code = 2; }
+message SetupMfaRequest          { string user_id = 1; }
+message ConfirmMfaRequest        { string user_id = 1; string code = 2; }
+message DisableMfaRequest        { string user_id = 1; string code = 2; }
+message GetUserByIdRequest       { string user_id = 1; }
+
+message AuthenticatedUserSummary {
+  string id = 1;
+  string email = 2;
+  string full_name = 3;
+  string role = 4;
+}
+
+message UserReply {
+  string id = 1;
+  string email = 2;
+  string full_name = 3;
+  string role = 4;
+  bool mfa_enabled = 5;
+  string created_at = 6;
+}
+
+// Union LoginUserResult de hoy: mfaRequired:false -> full_session, mfaRequired:true -> mfa_challenge.
+message LoginReply {
+  oneof result {
+    FullSession full_session = 1;
+    MfaChallenge mfa_challenge = 2;
+  }
+}
+message FullSession  { string access_token = 1; AuthenticatedUserSummary user = 2; }
+message MfaChallenge { string mfa_token = 1; }
+
+message SetupMfaReply   { string secret = 1; string otpauth_uri = 2; }
+message ConfirmMfaReply { repeated string backup_codes = 1; }
+message DisableMfaReply {}

@@ -1,0 +1,26 @@
+{
+  "name": "realtime-service",
+  "version": "0.1.0",
+  "description": "Servicio de tiempo real extraido del monolito: servidor socket.io (namespace /realtime) que consume el exchange fanout realtime.events de RabbitMQ y reemite cada evento a las salas indicadas. No conoce el dominio ni tiene base de datos: solo comparte el contrato del mensaje (ver src/types.ts).",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "start:dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.9",
+    "dotenv": "^16.4.5",
+    "jose": "^6.2.3",
+    "prom-client": "^15.1.3",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.8",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
